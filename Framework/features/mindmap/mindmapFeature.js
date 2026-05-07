@@ -1,10 +1,13 @@
 ﻿import { BusEvents } from "../../core/EventBus.js";
 import { showContextMenu } from "../../core/contextMenu.js";
+import { resolveWikiPageIconUrl } from "../wiki/wikiPageIcons.js";
 
 const PLANE_W = 2400,
   PLANE_H = 1800,
   GRID = 16,
   HIST = 48;
+const WIKI_LINK_NODE_W = 200;
+const WIKI_LINK_NODE_H = 76;
 const FRAME_INNER_PAD = 10;
 const FRAME_CREATE_PAD = 28;
 
@@ -45,6 +48,16 @@ function stylesOf(n) {
 }
 function isNote(n) {
   return String(n.type) === "note";
+}
+function isWikiLink(n) {
+  return String(n.type) === "wikiLink";
+}
+/** Notes and wiki link nodes never participate in graph edges. */
+function rejectsMindmapEdges(n) {
+  return isNote(n) || isWikiLink(n);
+}
+function mindmapAllowsEdge(a, b) {
+  return !!(a && b && !rejectsMindmapEdges(a) && !rejectsMindmapEdges(b));
 }
 function paintShell(el, n) {
   const s = stylesOf(n);
@@ -187,8 +200,8 @@ export function createMindmapFeature(ctx) {
   function tipUp() {
     const g = mm().snapGrid ? "ON" : "off";
     tip.textContent = dev()
-      ? `Snap ${g} Alt+S · Shift+drag pan · Wheel/↑↓ · box · multiselect · group drag · F · Ctrl+N · Ctrl+E · Del · Ctrl+D · Ctrl+C/V · Undo/Redo · Ctrl+S · links · Ctrl+link · Frames (board RMB) · Esc`
-      : "Viewer — locked";
+      ? `Snap ${g} Alt+S · Shift or middle-drag pan · Wheel/↑↓ · box · multiselect · group drag · F · Ctrl+N · Ctrl+E · Del · Ctrl+D · Ctrl+C/V · Undo/Redo · Ctrl+S · links · Ctrl+link · Frames (board RMB) · Esc`
+      : "Viewer — Shift or middle-drag pan · wheel zoom";
   }
   function mut() {
     if (!dev()) return;
@@ -247,7 +260,7 @@ export function createMindmapFeature(ctx) {
       return;
     }
     const n = (mm().nodes || []).find((x) => x.id === linkDraft.hoverTargetId);
-    if (!n || isNote(n)) {
+    if (!n || rejectsMindmapEdges(n)) {
       linkDropHint.style.visibility = "hidden";
       return;
     }
@@ -261,7 +274,7 @@ export function createMindmapFeature(ctx) {
       const next = (m.edges || []).filter((e) => {
         const a = nm[e.fromNodeId],
           b = nm[e.toNodeId];
-        return a && b && !isNote(a) && !isNote(b);
+        return mindmapAllowsEdge(a, b);
       });
       if (JSON.stringify(next) === JSON.stringify(m.edges || [])) return;
       m.edges = next;
@@ -275,7 +288,7 @@ export function createMindmapFeature(ctx) {
     for (const e of M.edges || []) {
       const A = nm[e.fromNodeId],
         B = nm[e.toNodeId];
-      if (!A || !B || isNote(A) || isNote(B)) continue;
+      if (!A || !B || rejectsMindmapEdges(A) || rejectsMindmapEdges(B)) continue;
       const xa = +A.x + (+A.w || 140) / 2,
         ya = +A.y + (+A.h || 80) / 2,
         xb = +B.x + (+B.w || 140) / 2,
@@ -335,6 +348,58 @@ export function createMindmapFeature(ctx) {
   function fillBody(w, n) {
     w.replaceChildren();
     const s = stylesOf(n);
+    if (n.type === "wikiLink") {
+      const wrap = document.createElement("div");
+      wrap.className = "pm-mm-wikilink-inner pm-mm-node-inner";
+      const wikiState = ctx.store.getState().wiki;
+      const pages = Array.isArray(wikiState?.pages) ? wikiState.pages : [];
+      const page = n.wikiPageId ? pages.find((p) => p.id === n.wikiPageId) : null;
+      const fromPageTitle = typeof page?.title === "string" ? page.title.trim() : "";
+      const titleText =
+        fromPageTitle || (typeof n.text === "string" ? String(n.text).trim() : "") || (n.wikiPageId ? "(Missing wiki page)" : "Wiki");
+
+      const badge = document.createElement("div");
+      badge.className = "pm-mm-wikilink-badge";
+      const kind = document.createElement("div");
+      kind.className = "pm-mm-wikilink-kind";
+      kind.textContent = "Wiki";
+
+      const iconWrap = document.createElement("div");
+      iconWrap.className = "pm-mm-wikilink-icon";
+      const rawIcon = page && typeof page.icon === "string" ? page.icon : "📄";
+      const iconUrl = resolveWikiPageIconUrl(rawIcon);
+      if (iconUrl) {
+        const img = document.createElement("img");
+        img.src = iconUrl;
+        img.alt = "";
+        img.draggable = false;
+        iconWrap.appendChild(img);
+      } else {
+        const sp = document.createElement("span");
+        sp.textContent = rawIcon?.trim() || "📄";
+        iconWrap.appendChild(sp);
+      }
+
+      badge.append(kind, iconWrap);
+
+      const lbl = document.createElement("div");
+      lbl.className = "pm-mm-wikilink-title";
+      lbl.textContent = titleText;
+
+      wrap.append(badge, lbl);
+
+      if (!dev() && n.wikiPageId) {
+        wrap.classList.add("pm-mm-wikilink-inner--clickable");
+        wrap.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (typeof ctx.router?.setRoute === "function") ctx.router.setRoute(`wiki:${n.wikiPageId}`);
+        });
+      }
+
+      w.appendChild(wrap);
+      return;
+    }
     if (n.type === "image" && n.src) {
       const st = document.createElement("div");
       st.className = "pm-mm-node-inner";
@@ -559,14 +624,37 @@ export function createMindmapFeature(ctx) {
     uploadRow.style.marginBottom = "0";
     uploadRow.append(uploadLab, fileBtn);
     imageBlock.append(urlLab, urlIn, uploadRow, fileIn);
+    const wikiBlock = document.createElement("div");
+    wikiBlock.className = "pm-stack";
+    wikiBlock.hidden = true;
+    const wikiLab = document.createElement("span");
+    wikiLab.className = "pm-label";
+    wikiLab.textContent = "Wiki page";
+    const wikiSel = document.createElement("select");
+    wikiSel.className = "pm-select";
+    wikiBlock.append(wikiLab, wikiSel);
+
+    const wikiPages = Array.isArray(ctx.store.getState().wiki?.pages) ? [...ctx.store.getState().wiki.pages] : [];
+    wikiPages.sort((a, b) => String(a.title || a.id || "").localeCompare(String(b.title || b.id || "")));
+    for (const p of wikiPages) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = String(p.title || p.id || "Untitled");
+      wikiSel.appendChild(opt);
+    }
+
     let pick = "text";
     const typeBtns = [];
+    let wikiTypeBtn = null;
+
     function setPick(k) {
+      if (k === "wikiLink" && !wikiPages.length) return;
       pick = k;
       typeBtns.forEach(([key, btn]) => {
         btn.classList.toggle("pm-mm-add-type--selected", key === pick);
       });
       imageBlock.hidden = k !== "image";
+      wikiBlock.hidden = k !== "wikiLink";
       if (k !== "image") {
         uploadedSrc = null;
         fileIn.value = "";
@@ -576,6 +664,7 @@ export function createMindmapFeature(ctx) {
       ["text", "Text"],
       ["note", "Note"],
       ["image", "Image"],
+      ["wikiLink", "Wiki link"],
     ]) {
       const b = document.createElement("button");
       b.type = "button";
@@ -584,7 +673,10 @@ export function createMindmapFeature(ctx) {
       b.addEventListener("click", () => setPick(k));
       typeBtns.push([k, b]);
       row.appendChild(b);
+      if (k === "wikiLink") wikiTypeBtn = b;
     }
+    if (wikiTypeBtn) wikiTypeBtn.disabled = wikiPages.length === 0;
+
     setPick("text");
     const act = document.createElement("div");
     act.className = "pm-toolbar";
@@ -594,6 +686,15 @@ export function createMindmapFeature(ctx) {
     ok.textContent = "Create";
     ok.addEventListener("click", () => {
       if (!pick) return;
+      if (pick === "wikiLink") {
+        const wikiPageId = wikiSel.value;
+        if (!wikiPageId) return;
+        const pg = wikiPages.find((p) => p.id === wikiPageId);
+        const wikiTitle = typeof pg?.title === "string" ? pg.title.trim() : "";
+        bk.remove();
+        cb({ type: "wikiLink", wikiPageId, wikiTitle: wikiTitle || "Wiki" });
+        return;
+      }
       let src = "";
       if (pick === "image") {
         src = uploadedSrc || urlIn.value.trim();
@@ -607,7 +708,7 @@ export function createMindmapFeature(ctx) {
     cx.textContent = "Cancel";
     cx.addEventListener("click", () => bk.remove());
     act.append(ok, cx);
-    box.append(title, row, imageBlock, act);
+    box.append(title, row, imageBlock, wikiBlock, act);
     bk.append(box);
     document.body.appendChild(bk);
   }
@@ -818,7 +919,10 @@ export function createMindmapFeature(ctx) {
     for (const n of m.nodes || []) {
       const pad = document.createElement("div");
       pad.dataset.nodeId = n.id;
-      pad.className = "pm-mm-node" + (isNote(n) ? " pm-mm-node-note" : "");
+      pad.className =
+        "pm-mm-node" +
+        (isNote(n) ? " pm-mm-node-note" : "") +
+        (isWikiLink(n) ? " pm-mm-node-wikilink" : "");
       pad.style.left = +n.x + "px";
       pad.style.top = +n.y + "px";
       pad.style.width = (+n.w || 140) + "px";
@@ -868,14 +972,14 @@ export function createMindmapFeature(ctx) {
         editing = null;
         rebuildStrip();
         if (ev.ctrlKey || ev.metaKey) {
-          if (isNote(n)) {
+          if (rejectsMindmapEdges(n)) {
             linkA = null;
             draw();
             return;
           }
           if (!linkA) linkA = n.id;
           else {
-            if (linkA !== n.id && !isNote(n)) {
+            if (linkA !== n.id && !rejectsMindmapEdges(n)) {
               mut();
               ctx.store.updateMindmap((mm2) => {
                 const dup = (mm2.edges || []).some((e) => e.fromNodeId === linkA && e.toNodeId === n.id);
@@ -916,6 +1020,7 @@ export function createMindmapFeature(ctx) {
       });
       pad.addEventListener("dblclick", (ev) => {
         if (!dev()) return;
+        if (isWikiLink(n)) return;
         ev.stopPropagation();
         const nt = prompt("Edit label", String(n.text || ""));
         if (nt === null) return;
@@ -927,7 +1032,7 @@ export function createMindmapFeature(ctx) {
         draw();
       });
 
-      if (dev() && sel.size === 1 && sel.has(n.id) && !isNote(n)) {
+      if (dev() && sel.size === 1 && sel.has(n.id) && !rejectsMindmapEdges(n)) {
         for (const side of ["n", "e", "s", "w"]) {
           const prt = document.createElement("div");
           prt.className = "pm-mm-link-port pm-mm-link-port--" + side;
@@ -948,7 +1053,7 @@ export function createMindmapFeature(ctx) {
         }
       }
 
-      if (dev() && sel.size === 1 && sel.has(n.id)) {
+      if (dev() && sel.size === 1 && sel.has(n.id) && !isWikiLink(n)) {
         const h = document.createElement("div");
         h.className = "pm-mm-resize-h";
         h.addEventListener("mousedown", (ev) => {
@@ -987,6 +1092,13 @@ export function createMindmapFeature(ctx) {
   inner.addEventListener(
     "mousedown",
     (ev) => {
+      if (ev.button === 1) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        inner.focus();
+        dragP = { sx: ev.clientX, sy: ev.clientY, vx, vy };
+        return;
+      }
       if (ev.shiftKey && ev.button === 0) {
         const t = ev.target;
         if (t.closest && !(t.closest(".pm-mm-node") || t.closest(".pm-mm-edge-hit") || t.closest(".pm-mm-frame")))
@@ -1041,7 +1153,7 @@ export function createMindmapFeature(ctx) {
       linkDraft.x2 = p.x;
       linkDraft.y2 = p.y;
       const hit = hitNodePlane(p.x, p.y, linkDraft.fromNodeId);
-      linkDraft.hoverTargetId = hit && !isNote(hit) ? hit.id : null;
+      linkDraft.hoverTargetId = hit && !rejectsMindmapEdges(hit) ? hit.id : null;
       drawEdges();
       syncLinkDropHint();
       return;
@@ -1127,14 +1239,13 @@ export function createMindmapFeature(ctx) {
     if (dragR) {
       ctx.store.updateMindmap((mm2) => {
         const c = (mm2.nodes || []).find((z) => z.id === dragR.nid);
-        if (c) {
-          let nw = Math.max(48, dragR.w0 + (ev.clientX - dragR.cx) / sc),
-            nh = Math.max(36, dragR.h0 + (ev.clientY - dragR.cy) / sc);
-          nw = SF(nw);
-          nh = SF(nh);
-          c.w = nw;
-          c.h = nh;
-        }
+        if (!c || isWikiLink(c)) return;
+        let nw = Math.max(48, dragR.w0 + (ev.clientX - dragR.cx) / sc),
+          nh = Math.max(36, dragR.h0 + (ev.clientY - dragR.cy) / sc);
+        nw = SF(nw);
+        nh = SF(nh);
+        c.w = nw;
+        c.h = nh;
       });
       draw();
     }
@@ -1153,7 +1264,7 @@ export function createMindmapFeature(ctx) {
         syncLinkDropHint();
         const p = planeFromClient(ev.clientX, ev.clientY);
         const tgt = hitNodePlane(p.x, p.y, d.fromNodeId);
-        if (tgt && !isNote(tgt) && tgt.id !== d.fromNodeId) {
+        if (tgt && !rejectsMindmapEdges(tgt) && tgt.id !== d.fromNodeId) {
           mut();
           ctx.store.updateMindmap((mm2) => {
             const dup = (mm2.edges || []).some((e) => e.fromNodeId === d.fromNodeId && e.toNodeId === tgt.id);
@@ -1321,14 +1432,28 @@ export function createMindmapFeature(ctx) {
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.code === "KeyN") {
       ev.preventDefault();
-      openAdd(({ type, src }) => {
+      openAdd((payload) => {
         mut();
+        const { type, src, wikiPageId, wikiTitle } = payload;
         ctx.store.updateMindmap((mm2) => {
           const id = nid();
           let node;
           if (type === "image") node = { id, type: "image", text: "Caption", src, x: 100, y: 100, w: 200, h: 140, styles: {} };
           else if (type === "note") node = { id, type: "note", text: "Note", x: 100, y: 100, w: 96, h: 44, styles: {} };
-          else node = { id, type: "text", text: "Node", x: 100, y: 100, w: 160, h: 90, styles: {} };
+          else if (type === "wikiLink") {
+            const ttl = typeof wikiTitle === "string" && wikiTitle.trim() ? wikiTitle.trim() : "Wiki";
+            node = {
+              id,
+              type: "wikiLink",
+              wikiPageId: wikiPageId || "",
+              text: ttl,
+              x: 100,
+              y: 100,
+              w: WIKI_LINK_NODE_W,
+              h: WIKI_LINK_NODE_H,
+              styles: {},
+            };
+          } else node = { id, type: "text", text: "Node", x: 100, y: 100, w: 160, h: 90, styles: {} };
           mm2.nodes = [...(mm2.nodes || []), node];
         });
         draw();
@@ -1340,6 +1465,7 @@ export function createMindmapFeature(ctx) {
       if (!sel.size) return;
       mut();
       const olds = [...sel];
+      const nm0 = Object.fromEntries((mm().nodes || []).map((nn) => [nn.id, nn]));
       const idMap = new Map();
       ctx.store.updateMindmap((mm2) => {
         for (const oid of olds) {
@@ -1354,8 +1480,11 @@ export function createMindmapFeature(ctx) {
         }
         const more = [];
         for (const ed of mm2.edges || []) {
-          if (idMap.has(ed.fromNodeId) && idMap.has(ed.toNodeId))
-            more.push({ id: "e-" + nid(), fromNodeId: idMap.get(ed.fromNodeId), toNodeId: idMap.get(ed.toNodeId) });
+          if (!idMap.has(ed.fromNodeId) || !idMap.has(ed.toNodeId)) continue;
+          const fo = nm0[ed.fromNodeId],
+            to = nm0[ed.toNodeId];
+          if (!mindmapAllowsEdge(fo, to)) continue;
+          more.push({ id: "e-" + nid(), fromNodeId: idMap.get(ed.fromNodeId), toNodeId: idMap.get(ed.toNodeId) });
         }
         mm2.edges = [...(mm2.edges || []), ...more];
       });
@@ -1379,6 +1508,7 @@ export function createMindmapFeature(ctx) {
       ev.preventDefault();
       if (!clipboard || !clipboard.nodes.length) return;
       mut();
+      const cmap = Object.fromEntries(clipboard.nodes.map((nn) => [nn.id, nn]));
       const idMap = new Map();
       ctx.store.updateMindmap((mm2) => {
         const news = clipboard.nodes.map((o) => {
@@ -1396,6 +1526,9 @@ export function createMindmapFeature(ctx) {
             const a = idMap.get(e.fromNodeId),
               b = idMap.get(e.toNodeId);
             if (!a || !b) return null;
+            const fo = cmap[e.fromNodeId],
+              tt = cmap[e.toNodeId];
+            if (!mindmapAllowsEdge(fo, tt)) return null;
             return { id: "e-" + nid(), fromNodeId: a, toNodeId: b };
           })
           .filter(Boolean);

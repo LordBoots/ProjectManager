@@ -1001,6 +1001,70 @@ tr.pm-wiki-table-row--flash {
   font-size: 0.85rem;
 }
 
+.pm-mm-node-wikilink {
+  min-height: 76px;
+  padding: 0.25rem 0.4rem;
+}
+
+.pm-mm-wikilink-inner {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0.35rem;
+  min-height: 0;
+}
+
+.pm-mm-wikilink-inner--clickable {
+  cursor: pointer;
+}
+
+.pm-mm-wikilink-badge {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 2.25rem;
+}
+
+.pm-mm-wikilink-kind {
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pm-text-muted, #6b7280);
+}
+
+.pm-mm-wikilink-icon {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.pm-mm-wikilink-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.pm-mm-wikilink-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
 .pm-mm-node-image img {
   max-width: 180px;
   max-height: 120px;
