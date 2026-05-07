@@ -1,0 +1,3 @@
+Current directory: E:\ProjectManager 
+Packaging app for platform win32 x64 using electron v42.0.0
+Wrote new app to: E:\ProjectManager\Electron\build\YourGameName-win32-x64

@@ -8,6 +8,8 @@ const PLANE_W = 2400,
   HIST = 48;
 const WIKI_LINK_NODE_W = 200;
 const WIKI_LINK_NODE_H = 76;
+const LABEL_NODE_W = 120;
+const LABEL_NODE_H = 44;
 const FRAME_INNER_PAD = 10;
 const FRAME_CREATE_PAD = 28;
 
@@ -67,13 +69,20 @@ function isNote(n) {
 function isWikiLink(n) {
   return String(n.type) === "wikiLink";
 }
+function isLabel(n) {
+  return String(n.type) === "label";
+}
 /** paintShell uses 14px top border when topBand is set; other sides stay 2px — border-box shrinks wiki body by this amount without extra outer height. */
 const WIKI_TOP_BAND_EXTRA_H = 14 - 2;
 function defaultNodeW(n) {
-  return isWikiLink(n) ? WIKI_LINK_NODE_W : 140;
+  if (isWikiLink(n)) return WIKI_LINK_NODE_W;
+  if (isLabel(n)) return LABEL_NODE_W;
+  return 140;
 }
 function defaultNodeH(n) {
-  return isWikiLink(n) ? WIKI_LINK_NODE_H : 80;
+  if (isWikiLink(n)) return WIKI_LINK_NODE_H;
+  if (isLabel(n)) return LABEL_NODE_H;
+  return 80;
 }
 function storedNodeW(n) {
   return +n.w || defaultNodeW(n);
@@ -199,6 +208,26 @@ function directedMindmapEdgeSegment(from, to) {
   return { x1, y1, x2, y2 };
 }
 
+/** Link from a fixed plane point (image anchor) to the border of node `to`. */
+function directedEdgePointToNode(ax, ay, to) {
+  const w = renderedNodeW(to),
+    h = renderedNodeH(to);
+  const cx = +to.x + w / 2,
+    cy = +to.y + h / 2;
+  const clip = segmentClipRect(ax, ay, cx, cy, +to.x, +to.y, w, h);
+  let tEnd = clip ? clip.t0 : 1;
+  if (tEnd <= MM_EDGE_CLIP_EPS) tEnd = clip && clip.t1 > MM_EDGE_CLIP_EPS ? Math.min(clip.t1, MM_EDGE_CLIP_EPS * 100) : 1;
+  let x2 = ax + tEnd * (cx - ax),
+    y2 = ay + tEnd * (cy - ay);
+  const dist = Math.hypot(x2 - ax, y2 - ay);
+  if (dist < 3 && clip && clip.t1 > clip.t0 + MM_EDGE_CLIP_EPS) {
+    const t2 = Math.min(clip.t1, clip.t0 + Math.max(0.04, (clip.t1 - clip.t0) * 0.15));
+    x2 = ax + t2 * (cx - ax);
+    y2 = ay + t2 * (cy - ay);
+  }
+  return { x1: ax, y1: ay, x2, y2 };
+}
+
 function paintShell(el, n) {
   const s = stylesOf(n);
   el.style.backgroundColor = s.bg;
@@ -295,7 +324,8 @@ export function createMindmapFeature(ctx) {
     dragF = null,
     dragFR = null,
     boxSel = null,
-    clipboard = null;
+    clipboard = null,
+    pendingImageAnchorPlace = null;
 
   const root = document.createElement("div");
   root.className = "pm-mm-page";
@@ -326,6 +356,11 @@ export function createMindmapFeature(ctx) {
   const framesWrap = document.createElement("div");
   framesWrap.className = "pm-mm-frames-layer";
   plane.appendChild(framesWrap);
+  const svgEdgesOverlay = document.createElementNS(NS, "svg");
+  svgEdgesOverlay.classList.add("pm-svg-edges", "pm-svg-edges-overlay");
+  svgEdgesOverlay.setAttribute("width", String(PLANE_W));
+  svgEdgesOverlay.setAttribute("height", String(PLANE_H));
+  plane.appendChild(svgEdgesOverlay);
 
   inner.appendChild(plane);
   shell.appendChild(inner);
@@ -387,6 +422,21 @@ export function createMindmapFeature(ctx) {
     const r = inner.getBoundingClientRect();
     return { x: (cx - r.left - vx) / sc, y: (cy - r.top - vy) / sc };
   }
+  /** Plane coordinates for a hotspot normalized relative to the image node's `.pm-mm-img-wrap`. Requires DOM laid out (called during paint after pads appended). */
+  function anchorPlaneFromImageNorm(imageNode, nx, ny) {
+    const wrap = plane.querySelector(`[data-node-id="${imageNode.id}"] .pm-mm-img-wrap`);
+    const ux = Math.max(0, Math.min(1, +nx || 0)),
+      uy = Math.max(0, Math.min(1, +ny || 0));
+    if (!wrap) {
+      const w = renderedNodeW(imageNode),
+        h = renderedNodeH(imageNode);
+      return { x: +imageNode.x + ux * w, y: +imageNode.y + uy * h };
+    }
+    const rect = wrap.getBoundingClientRect();
+    const sx = rect.left + ux * rect.width,
+      sy = rect.top + uy * rect.height;
+    return planeFromClient(sx, sy);
+  }
   function hitNodePlane(px, py, excludeId) {
     const nodes = (mm().nodes || []).slice();
     for (let i = nodes.length - 1; i >= 0; i--) {
@@ -415,13 +465,37 @@ export function createMindmapFeature(ctx) {
   function pruneStored() {
     ctx.store.updateMindmap((m) => {
       const nm = Object.fromEntries((m.nodes || []).map((x) => [x.id, x]));
-      const next = (m.edges || []).filter((e) => {
+      const prevEdgesJson = JSON.stringify(m.edges || []);
+      const nextEdges = (m.edges || []).filter((e) => {
         const a = nm[e.fromNodeId],
           b = nm[e.toNodeId];
-        return mindmapAllowsEdge(a, b);
+        if (!mindmapAllowsEdge(a, b)) return false;
+        if (e.imageAnchorId) {
+          if (!a || String(a.type) !== "image" || !b || String(b.type) !== "label") return false;
+          const anchors = Array.isArray(a.labelLinks) ? a.labelLinks : [];
+          if (!anchors.some((L) => L.id === e.imageAnchorId)) return false;
+        }
+        return true;
       });
-      if (JSON.stringify(next) === JSON.stringify(m.edges || [])) return;
-      m.edges = next;
+      let mutatedLinks = false;
+      const anchorRefs = new Map();
+      for (const e of nextEdges) {
+        if (!e.imageAnchorId) continue;
+        if (!anchorRefs.has(e.fromNodeId)) anchorRefs.set(e.fromNodeId, new Set());
+        anchorRefs.get(e.fromNodeId).add(e.imageAnchorId);
+      }
+      for (const nn of m.nodes || []) {
+        if (String(nn.type) !== "image" || !Array.isArray(nn.labelLinks) || !nn.labelLinks.length) continue;
+        const keep = anchorRefs.get(nn.id);
+        const filtered = nn.labelLinks.filter((L) => keep && keep.has(L.id));
+        if (filtered.length !== nn.labelLinks.length) {
+          nn.labelLinks = filtered;
+          mutatedLinks = true;
+        }
+      }
+      const nextEdgesJson = JSON.stringify(nextEdges);
+      if (nextEdgesJson === prevEdgesJson && !mutatedLinks) return;
+      m.edges = nextEdges;
     });
   }
 
@@ -455,6 +529,7 @@ export function createMindmapFeature(ctx) {
       const A = nm[e.fromNodeId],
         B = nm[e.toNodeId];
       if (!A || !B || rejectsMindmapEdges(A) || rejectsMindmapEdges(B)) continue;
+      if (e.imageAnchorId) continue;
       const { x1: xa, y1: ya, x2: xb, y2: yb } = directedMindmapEdgeSegment(A, B);
       const selected = selEdges.has(e.id);
       const hit = document.createElementNS(NS, "line");
@@ -506,6 +581,83 @@ export function createMindmapFeature(ctx) {
       dl.setAttribute("stroke-width", "3");
       dl.setAttribute("stroke-dasharray", "8 5");
       svg.appendChild(dl);
+    }
+  }
+
+  function drawEdgesOverlay() {
+    while (svgEdgesOverlay.firstChild) svgEdgesOverlay.removeChild(svgEdgesOverlay.firstChild);
+    const defs = document.createElementNS(NS, "defs");
+    function mkMarker(id, fill) {
+      const marker = document.createElementNS(NS, "marker");
+      marker.setAttribute("id", id);
+      marker.setAttribute("markerUnits", "userSpaceOnUse");
+      marker.setAttribute("markerWidth", "10");
+      marker.setAttribute("markerHeight", "9");
+      marker.setAttribute("refX", "10");
+      marker.setAttribute("refY", "4.5");
+      marker.setAttribute("orient", "auto");
+      marker.setAttribute("viewBox", "0 0 10 9");
+      const arrowPath = document.createElementNS(NS, "path");
+      arrowPath.setAttribute("d", "M 10 4.5 L 0 0 L 0 9 Z");
+      arrowPath.setAttribute("fill", fill);
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+    }
+    mkMarker("pm-mm-arrow-end-ov", "#7d869a");
+    mkMarker("pm-mm-arrow-end-ov-sel", "#6c8cff");
+    svgEdgesOverlay.appendChild(defs);
+
+    const M = mm(),
+      nm = Object.fromEntries((M.nodes || []).map((x) => [x.id, x]));
+    for (const e of M.edges || []) {
+      if (!e.imageAnchorId) continue;
+      const A = nm[e.fromNodeId],
+        B = nm[e.toNodeId];
+      if (!A || !B || rejectsMindmapEdges(A) || rejectsMindmapEdges(B)) continue;
+      if (String(A.type) !== "image" || String(B.type) !== "label") continue;
+      const anchors = Array.isArray(A.labelLinks) ? A.labelLinks : [];
+      const spot = anchors.find((L) => L.id === e.imageAnchorId);
+      if (!spot) continue;
+      const { x: ax, y: ay } = anchorPlaneFromImageNorm(A, spot.nx, spot.ny);
+      const { x1: xa, y1: ya, x2: xb, y2: yb } = directedEdgePointToNode(ax, ay, B);
+      const selected = selEdges.has(e.id);
+      const hit = document.createElementNS(NS, "line");
+      hit.setAttribute("class", "pm-mm-edge-hit");
+      hit.setAttribute("pointer-events", "stroke");
+      hit.setAttribute("x1", String(xa));
+      hit.setAttribute("y1", String(ya));
+      hit.setAttribute("x2", String(xb));
+      hit.setAttribute("y2", String(yb));
+      hit.setAttribute("stroke", "#303030");
+      hit.setAttribute("stroke-opacity", "0");
+      hit.setAttribute("stroke-width", "20");
+      hit.setAttribute("stroke-linecap", "round");
+      const vis = document.createElementNS(NS, "line");
+      vis.setAttribute("pointer-events", "none");
+      vis.setAttribute("x1", String(xa));
+      vis.setAttribute("y1", String(ya));
+      vis.setAttribute("x2", String(xb));
+      vis.setAttribute("y2", String(yb));
+      vis.setAttribute("stroke", selected ? "#6c8cff" : "#7d869a");
+      vis.setAttribute("stroke-width", selected ? "3" : "2");
+      vis.setAttribute("marker-end", `url(#pm-mm-arrow-end-ov${selected ? "-sel" : ""})`);
+      svgEdgesOverlay.appendChild(hit);
+      svgEdgesOverlay.appendChild(vis);
+      hit.addEventListener("mousedown", (ev) => {
+        ev.stopPropagation();
+        if (ev.button !== 0 || !dev()) return;
+        if (ev.shiftKey) selEdges.has(e.id) ? selEdges.delete(e.id) : selEdges.add(e.id);
+        else {
+          sel.clear();
+          selEdges.clear();
+          selFrames.clear();
+          selEdges.add(e.id);
+        }
+        endMindmapEditing();
+        linkA = null;
+        rebuildStrip();
+        draw();
+      });
     }
   }
 
@@ -579,6 +731,68 @@ export function createMindmapFeature(ctx) {
       const imWrap = document.createElement("div");
       imWrap.className = "pm-mm-img-wrap";
       imWrap.appendChild(im);
+
+      const links = Array.isArray(n.labelLinks) ? n.labelLinks : [];
+      if (links.length) {
+        const layer = document.createElement("div");
+        layer.className = "pm-mm-img-anchor-layer";
+        layer.setAttribute("aria-hidden", "true");
+        for (const L of links) {
+          const dot = document.createElement("span");
+          dot.className = "pm-mm-img-anchor-dot";
+          dot.style.left = (Math.max(0, Math.min(1, +L.nx || 0)) * 100).toFixed(4) + "%";
+          dot.style.top = (Math.max(0, Math.min(1, +L.ny || 0)) * 100).toFixed(4) + "%";
+          layer.appendChild(dot);
+        }
+        imWrap.appendChild(layer);
+      }
+
+      if (dev() && editing === n.id && pendingImageAnchorPlace === n.id) {
+        imWrap.classList.add("pm-mm-img-wrap--place-pending");
+      }
+
+      if (dev() && editing === n.id) {
+        const clamp01 = (z) => Math.max(0, Math.min(1, z));
+        /** Bubble phase only; capture-phase stop on mousedown would prevent the event from hitting `img`, so `click` never fires. */
+        imWrap.addEventListener("click", (ev) => {
+          if (pendingImageAnchorPlace !== n.id || editing !== n.id) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const br = imWrap.getBoundingClientRect();
+          const nx = clamp01((ev.clientX - br.left) / Math.max(br.width, 1e-6));
+          const ny = clamp01((ev.clientY - br.top) / Math.max(br.height, 1e-6));
+          const anchorId = "mla-" + Math.random().toString(36).slice(2, 9);
+          const labelId = nid();
+          const pClick = planeFromClient(ev.clientX, ev.clientY);
+          const SF = snapFn();
+          mut();
+          ctx.store.updateMindmap((mm2) => {
+            const o = (mm2.nodes || []).find((z) => z.id === n.id);
+            if (!o || String(o.type) !== "image") return;
+            o.labelLinks = [...(Array.isArray(o.labelLinks) ? o.labelLinks : []), { id: anchorId, nx, ny }];
+            const lx = SF(Math.min(PLANE_W - LABEL_NODE_W, Math.max(0, pClick.x + 42)));
+            const ly = SF(Math.min(PLANE_H - LABEL_NODE_H, Math.max(0, pClick.y - LABEL_NODE_H / 2)));
+            mm2.nodes = [...(mm2.nodes || [])];
+            mm2.nodes.push({
+              id: labelId,
+              type: "label",
+              text: "Label",
+              x: lx,
+              y: ly,
+              w: LABEL_NODE_W,
+              h: LABEL_NODE_H,
+              styles: {},
+            });
+            mm2.edges = [...(mm2.edges || []), { id: "e-" + nid(), fromNodeId: o.id, toNodeId: labelId, imageAnchorId: anchorId }];
+          });
+          pendingImageAnchorPlace = null;
+          sel.clear();
+          sel.add(labelId);
+          rebuildStrip();
+          draw();
+        });
+      }
+
       if (s.imageTitlePos === "bottom") {
         st.append(imWrap);
         if (s.imageHasTitle === "1") st.append(cap);
@@ -587,6 +801,65 @@ export function createMindmapFeature(ctx) {
         st.append(imWrap);
       }
       w.appendChild(st);
+      return;
+    }
+
+    if (isLabel(n)) {
+      const align = s.textAlign || "left";
+      if (dev() && editing === n.id) {
+        const wrap = document.createElement("div");
+        wrap.className = "pm-mm-node-inner";
+
+        const patchNode = (patch) => {
+          ctx.store.updateMindmap((mm2) => {
+            const o = (mm2.nodes || []).find((z) => z.id === n.id);
+            if (!o || !isLabel(o)) return;
+            Object.assign(o, patch);
+          }, { silent: true });
+          draw();
+        };
+
+        const ta = document.createElement("textarea");
+        ta.className = "pm-mm-node-edit pm-mm-node-edit-single";
+        ta.value = n.text ?? "";
+        ta.rows = 2;
+        ta.style.textAlign = align;
+        ta.style.fontSize = (Number(s.fontSize) || 14) + "px";
+        ta.style.fontWeight = String(s.fontWeight || "500");
+        ta.style.fontStyle = s.fontStyle || "normal";
+        ta.style.textDecoration = s.textDecoration || "none";
+        ta.style.color = s.fontColor || "#1a1d24";
+        ta.style.lineHeight = "1.3";
+        ta.addEventListener("input", () => patchNode({ text: ta.value }));
+        ta.addEventListener("mousedown", (e) => e.stopPropagation());
+        ta.addEventListener("pointerdown", (e) => e.stopPropagation());
+        ta.addEventListener("keydown", (ev) => {
+          if (ev.code === "Escape") {
+            ev.preventDefault();
+            ev.stopPropagation();
+            endMindmapEditing();
+            rebuildStrip();
+            draw();
+            inner.focus();
+          }
+        });
+        wrap.appendChild(ta);
+        w.appendChild(wrap);
+        return;
+      }
+
+      const te = document.createElement("div");
+      te.className = "pm-mm-node-text pm-mm-node-inner pm-mm-label-body";
+      te.textContent = n.text ?? "";
+      te.style.textAlign = align;
+      te.style.whiteSpace = "pre-wrap";
+      te.style.fontSize = (Number(s.fontSize) || 14) + "px";
+      te.style.fontWeight = String(s.fontWeight || "500");
+      te.style.fontStyle = s.fontStyle || "normal";
+      te.style.textDecoration = s.textDecoration || "none";
+      te.style.color = s.fontColor || "#1a1d24";
+      te.style.lineHeight = "1.3";
+      w.appendChild(te);
       return;
     }
 
@@ -733,7 +1006,7 @@ export function createMindmapFeature(ctx) {
     if (!editing || !dev()) return;
     const nid = editing;
     const node = (mm().nodes || []).find((z) => z.id === nid);
-    if (!node || String(node.type) !== "text") return;
+    if (!node || (String(node.type) !== "text" && !isLabel(node))) return;
     const pane = plane.querySelector(`[data-node-id="${nid}"]`);
     if (!pane) return;
     const hdr = pane.querySelector(".pm-mm-node-edit-header");
@@ -758,6 +1031,7 @@ export function createMindmapFeature(ctx) {
   function endMindmapEditing() {
     flushTextNodeEditors();
     editing = null;
+    pendingImageAnchorPlace = null;
   }
 
   function rebuildStrip() {
@@ -865,7 +1139,7 @@ export function createMindmapFeature(ctx) {
           cur.textAlign
         )
       );
-    } else if (n.type === "note") {
+    } else if (n.type === "note" || isLabel(n)) {
       row("Size", mkSel(MM_FONT_SIZE_CHOICES, "fontSize", String(Number(cur.fontSize) || 16)));
       row(
         "Align",
@@ -897,6 +1171,36 @@ export function createMindmapFeature(ctx) {
         "imageTitlePos",
         cur.imageTitlePos
       ));
+
+      const capInp = document.createElement("input");
+      capInp.type = "text";
+      capInp.className = "pm-input";
+      capInp.placeholder = "Caption / title line";
+      capInp.value = typeof n.text === "string" ? n.text : "";
+      capInp.addEventListener("input", () => {
+        const v = capInp.value;
+        ctx.store.updateMindmap((m2) => {
+          const o = (m2.nodes || []).find((z) => z.id === editing);
+          if (!o || String(o.type) !== "image") return;
+          o.text = v;
+        }, { silent: true });
+        draw();
+      });
+
+      row("Caption", capInp);
+
+      const placeBtn = document.createElement("button");
+      placeBtn.type = "button";
+      placeBtn.className =
+        pendingImageAnchorPlace === n.id ? "pm-btn pm-btn-primary" : "pm-btn";
+      placeBtn.textContent = pendingImageAnchorPlace === n.id ? "Click image…" : "Add label point";
+      placeBtn.title = "Click a spot on the image — creates a label node and anchored link.";
+      placeBtn.addEventListener("click", () => {
+        pendingImageAnchorPlace = pendingImageAnchorPlace === n.id ? null : n.id;
+        rebuildStrip();
+        draw();
+      });
+      row("Labels", placeBtn);
     }
     const done = document.createElement("button");
     done.type = "button";
@@ -1024,6 +1328,7 @@ export function createMindmapFeature(ctx) {
     for (const [k, lab] of [
       ["text", "Text"],
       ["note", "Note"],
+      ["label", "Label"],
       ["image", "Image"],
       ["wikiLink", "Wiki link"],
     ]) {
@@ -1414,7 +1719,8 @@ export function createMindmapFeature(ctx) {
         "pm-mm-node" +
         (String(n.type) === "image" ? " pm-mm-node-image" : "") +
         (isNote(n) ? " pm-mm-node-note" : "") +
-        (isWikiLink(n) ? " pm-mm-node-wikilink" : "");
+        (isWikiLink(n) ? " pm-mm-node-wikilink" : "") +
+        (isLabel(n) ? " pm-mm-node-label" : "");
       pad.style.left = +n.x + "px";
       pad.style.top = +n.y + "px";
       pad.style.width = storedNodeW(n) + "px";
@@ -1436,16 +1742,27 @@ export function createMindmapFeature(ctx) {
       pad.addEventListener("mouseenter", () => ctx.bus.emit(BusEvents.ENTITY_HOVER, { type: "mindmapNode", id: n.id }));
       pad.addEventListener("mousedown", (ev) => {
         ev.stopPropagation();
-        /** Clicks on the text-edit stack bubble to pad; skipping this would call inner.focus() and endMindmapEditing(), nuking textarea focus/caret (header vs body especially). */
+        /** While placing label anchors on an image: let mousedown/click reach img so the browser emits `click`; don't exit edit or drag. */
+        const placingImageAnchor =
+          dev() &&
+          String(n.type) === "image" &&
+          editing === n.id &&
+          pendingImageAnchorPlace === n.id &&
+          ev.button === 0 &&
+          !ev.shiftKey &&
+          !(ev.ctrlKey || ev.metaKey) &&
+          ev.target instanceof Element &&
+          ev.target.closest(".pm-mm-img-wrap");
+        /** Clicks on inline editors bubble to pad; skipping inner.focus/endMindmapEditing preserves caret. */
         const onActiveTextEditor =
           !ev.shiftKey &&
           dev() &&
           editing === n.id &&
-          String(n.type) === "text" &&
           ev.target instanceof Element &&
-          ev.target.closest(".pm-mm-node-text-stack");
+          ((String(n.type) === "text" && ev.target.closest(".pm-mm-node-text-stack")) ||
+            (isLabel(n) && ev.target.closest(".pm-mm-node-edit-single")));
 
-        if (!onActiveTextEditor && !ev.shiftKey) inner.focus();
+        if (!onActiveTextEditor && !ev.shiftKey && !placingImageAnchor) inner.focus();
         if (!dev()) {
           selEdges.clear();
           selFrames.clear();
@@ -1470,6 +1787,7 @@ export function createMindmapFeature(ctx) {
           sel.clear();
           sel.add(n.id);
         }
+        if (placingImageAnchor) return;
         if (!onActiveTextEditor) {
           endMindmapEditing();
           rebuildStrip();
@@ -1546,6 +1864,37 @@ export function createMindmapFeature(ctx) {
           });
           return;
         }
+        if (n.type === "image") {
+          mut();
+          editing = n.id;
+          pendingImageAnchorPlace = null;
+          selEdges.clear();
+          selFrames.clear();
+          if (!sel.has(n.id)) {
+            sel.clear();
+            sel.add(n.id);
+          }
+          rebuildStrip();
+          draw();
+          return;
+        }
+        if (isLabel(n)) {
+          mut();
+          editing = n.id;
+          selEdges.clear();
+          selFrames.clear();
+          if (!sel.has(n.id)) {
+            sel.clear();
+            sel.add(n.id);
+          }
+          rebuildStrip();
+          draw();
+          requestAnimationFrame(() => {
+            const pane = plane.querySelector(`[data-node-id="${n.id}"]`);
+            pane?.querySelector(".pm-mm-node-edit-single")?.focus?.();
+          });
+          return;
+        }
         const nt = prompt("Edit label", String(n.text || ""));
         if (nt === null) return;
         mut();
@@ -1571,6 +1920,7 @@ export function createMindmapFeature(ctx) {
             const xy = o[side];
             linkDraft = { fromNodeId: n.id, x1: xy[0], y1: xy[1], x2: xy[0], y2: xy[1], hoverTargetId: null };
             drawEdges();
+            drawEdgesOverlay();
             syncLinkDropHint();
           });
           pad.appendChild(prt);
@@ -1590,7 +1940,10 @@ export function createMindmapFeature(ctx) {
       }
       plane.appendChild(pad);
     }
+    plane.appendChild(svgEdgesOverlay);
+    plane.appendChild(linkDropHint);
     drawEdges();
+    drawEdgesOverlay();
     tipUp();
     syncLinkDropHint();
 
@@ -1711,8 +2064,7 @@ export function createMindmapFeature(ctx) {
       const hit = hitNodePlane(p.x, p.y, linkDraft.fromNodeId);
       linkDraft.hoverTargetId = hit && !rejectsMindmapEdges(hit) ? hit.id : null;
       drawEdges();
-      syncLinkDropHint();
-      return;
+      drawEdgesOverlay();
     }
     if (boxSel) {
       const r = inner.getBoundingClientRect();
@@ -2005,6 +2357,7 @@ export function createMindmapFeature(ctx) {
           let node;
           if (type === "image") node = { id, type: "image", text: "Caption", src, x: 100, y: 100, w: 200, h: 140, styles: {} };
           else if (type === "note") node = { id, type: "note", text: "Note", x: 100, y: 100, w: 96, h: 44, styles: {} };
+          else if (type === "label") node = { id, type: "label", text: "Label", x: 100, y: 100, w: LABEL_NODE_W, h: LABEL_NODE_H, styles: {} };
           else if (type === "wikiLink") {
             const ttl = typeof wikiTitle === "string" && wikiTitle.trim() ? wikiTitle.trim() : "Wiki";
             node = {
@@ -2049,7 +2402,12 @@ export function createMindmapFeature(ctx) {
           const fo = nm0[ed.fromNodeId],
             to = nm0[ed.toNodeId];
           if (!mindmapAllowsEdge(fo, to)) continue;
-          more.push({ id: "e-" + nid(), fromNodeId: idMap.get(ed.fromNodeId), toNodeId: idMap.get(ed.toNodeId) });
+          more.push({
+            id: "e-" + nid(),
+            fromNodeId: idMap.get(ed.fromNodeId),
+            toNodeId: idMap.get(ed.toNodeId),
+            ...(ed.imageAnchorId ? { imageAnchorId: ed.imageAnchorId } : {}),
+          });
         }
         mm2.edges = [...(mm2.edges || []), ...more];
       });
@@ -2094,7 +2452,12 @@ export function createMindmapFeature(ctx) {
             const fo = cmap[e.fromNodeId],
               tt = cmap[e.toNodeId];
             if (!mindmapAllowsEdge(fo, tt)) return null;
-            return { id: "e-" + nid(), fromNodeId: a, toNodeId: b };
+            return {
+              id: "e-" + nid(),
+              fromNodeId: a,
+              toNodeId: b,
+              ...(e.imageAnchorId ? { imageAnchorId: e.imageAnchorId } : {}),
+            };
           })
           .filter(Boolean);
         mm2.edges = [...(mm2.edges || []), ...ne];
