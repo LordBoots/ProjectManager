@@ -1,0 +1,18 @@
+{
+  "watch": [
+    "index.html",
+    "Electron/",
+    "Framework/",
+    "Documentation/"
+  ],
+  "ext": "js,html,css,json,md",
+  "ignore": [
+    "node_modules/",
+    "*.log",
+    "build/",
+    "dist/"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
