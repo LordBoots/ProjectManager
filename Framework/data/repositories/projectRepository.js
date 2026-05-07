@@ -28,9 +28,29 @@ function mergeSuggestions(raw) {
 export function loadMindmapJson(raw) {
   const d = defaultMindMap();
   if (!raw || typeof raw !== 'object') return d;
+  /** @type {unknown[]} */
+  const rawFrames = Array.isArray(raw.frames) ? raw.frames : [];
+  const frames = rawFrames
+    .filter((f) => f && typeof f === 'object' && typeof /** @type {{ id?: unknown }} */ (f).id === 'string')
+    .map((f) => {
+      const fr = /** @type {{ id: string, x?: unknown, y?: unknown, w?: unknown, h?: unknown, memberIds?: unknown }} */ (f);
+      const nx = typeof fr.x === 'number' && !Number.isNaN(fr.x) ? fr.x : 0;
+      const ny = typeof fr.y === 'number' && !Number.isNaN(fr.y) ? fr.y : 0;
+      return {
+        id: fr.id,
+        x: nx,
+        y: ny,
+        w: typeof fr.w === 'number' && !Number.isNaN(fr.w) ? fr.w : 160,
+        h: typeof fr.h === 'number' && !Number.isNaN(fr.h) ? fr.h : 120,
+        memberIds: Array.isArray(fr.memberIds)
+          ? fr.memberIds.filter((id) => typeof id === 'string')
+          : [],
+      };
+    });
   return {
     nodes: Array.isArray(raw.nodes) ? raw.nodes : d.nodes,
     edges: Array.isArray(raw.edges) ? raw.edges : d.edges,
+    frames,
     view:
       raw.view && typeof raw.view === 'object'
         ? { ...d.view, ...raw.view }

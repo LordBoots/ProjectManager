@@ -4,7 +4,9 @@
 
 /** @typedef {{ id: string, fromNodeId: string, toNodeId: string }} MindMapEdge */
 
-/** @typedef {{ nodes: MindMapNode[], edges: MindMapEdge[], view: { x: number, y: number, scale: number }, snapGrid?: boolean }} MindMapData */
+/** @typedef {{ id: string, x: number, y: number, w: number, h: number, memberIds: string[] }} MindMapFrame */
+
+/** @typedef {{ nodes: MindMapNode[], edges: MindMapEdge[], frames?: MindMapFrame[], view: { x: number, y: number, scale: number }, snapGrid?: boolean }} MindMapData */
 
 /** @typedef {{ id: string, icon?: string, title: string, description?: string, subtasks: { id: string, label: string, done: boolean }[] }} KanbanCard */
 
@@ -46,6 +48,7 @@ export function defaultMindMap() {
       },
     ],
     edges: [],
+    frames: [],
     view: { x: 0, y: 0, scale: 1 },
     snapGrid: false,
   };

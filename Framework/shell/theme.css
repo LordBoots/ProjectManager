@@ -443,6 +443,47 @@ body {
   background-size: 16px 16px;
 }
 
+/* Logical groups: drawn under nodes; layer is non-interactive except frame boxes */
+.pm-mm-frames-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pm-mm-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed rgba(74, 88, 112, 0.55);
+  border-radius: var(--pm-radius-md);
+  background: rgba(255, 255, 255, 0.18);
+  pointer-events: auto;
+  z-index: 1;
+  cursor: grab;
+}
+
+.pm-mm-frame:active {
+  cursor: grabbing;
+}
+
+.pm-mm-frame-sel {
+  border-color: var(--pm-accent);
+  background: rgba(108, 140, 255, 0.08);
+  box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.22);
+}
+
+.pm-mm-frame-res-h {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 14px;
+  height: 14px;
+  background: var(--pm-accent);
+  border-radius: 3px;
+  cursor: nwse-resize;
+  z-index: 3;
+}
+
 .pm-mm-node {
   position: absolute;
   border-radius: var(--pm-radius-md);

@@ -4,8 +4,8 @@
       "id": "n-7w06co",
       "type": "text",
       "text": "Node",
-      "x": 304,
-      "y": 96,
+      "x": 112,
+      "y": 64,
       "w": 160,
       "h": 90,
       "styles": {
@@ -30,18 +30,48 @@
       "id": "n-shgx5w",
       "type": "note",
       "text": "Note",
-      "x": 576,
-      "y": 96,
+      "x": 304,
+      "y": 192,
       "w": 96,
       "h": 44,
       "styles": {}
+    },
+    {
+      "id": "n-oqbpyg",
+      "type": "text",
+      "text": "Node",
+      "x": 304,
+      "y": 64,
+      "w": 160,
+      "h": 90,
+      "styles": {}
     }
   ],
-  "edges": [],
+  "edges": [
+    {
+      "id": "e-n-to57cu",
+      "fromNodeId": "n-7w06co",
+      "toNodeId": "n-oqbpyg"
+    }
+  ],
+  "frames": [
+    {
+      "id": "f-4x8iyd",
+      "x": 96,
+      "y": 48,
+      "w": 384,
+      "h": 208,
+      "memberIds": [
+        "n-7w06co",
+        "n-shgx5w",
+        "n-oqbpyg"
+      ]
+    }
+  ],
   "view": {
-    "x": 212.5474938460036,
-    "y": 482.98325116354715,
-    "scale": 0.998613251094238
+    "x": 756.3514473572785,
+    "y": 441.52247121290986,
+    "scale": 1.1036383235143266
   },
   "snapGrid": true
 }
