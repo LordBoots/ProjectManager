@@ -97,6 +97,108 @@ function rejectsMindmapEdges(n) {
 function mindmapAllowsEdge(a, b) {
   return !!(a && b && !rejectsMindmapEdges(a) && !rejectsMindmapEdges(b));
 }
+
+const MM_EDGE_CLIP_EPS = 1e-6;
+
+/** Liang–Barsky: portion of segment P→Q lying inside axis-aligned rectangle [rx, ry, rw, rh]. Returns param interval [t0,t1] on the segment (0=P, 1=Q), or null. */
+function segmentClipRect(px, py, qx, qy, rx, ry, rw, rh) {
+  const xmin = rx,
+    ymin = ry,
+    xmax = rx + rw,
+    ymax = ry + rh;
+  let u0 = 0,
+    u1 = 1;
+  const dx = qx - px,
+    dy = qy - py;
+
+  const clip = (p, q) => {
+    if (Math.abs(p) < MM_EDGE_CLIP_EPS) return q >= -MM_EDGE_CLIP_EPS;
+    const r = q / p;
+    if (p < 0) {
+      if (r > u1 + MM_EDGE_CLIP_EPS) return false;
+      if (r > u0) u0 = r;
+    } else {
+      if (r < u0 - MM_EDGE_CLIP_EPS) return false;
+      if (r < u1) u1 = r;
+    }
+    return true;
+  };
+
+  if (!clip(-dx, px - xmin)) return null;
+  if (!clip(dx, xmax - px)) return null;
+  if (!clip(-dy, py - ymin)) return null;
+  if (!clip(dy, ymax - py)) return null;
+
+  return u0 <= u1 + MM_EDGE_CLIP_EPS ? { t0: u0, t1: Math.min(u1, 1) } : null;
+}
+
+/**
+ * Directed link from parent `from` to child `to`, using creation order stored as from→to.
+ * Segment is trimmed so it leaves the parent's box and stops on the child's border (arrow lands on child edge).
+ */
+function directedMindmapEdgeSegment(from, to) {
+  const wF = renderedNodeW(from),
+    hF = renderedNodeH(from),
+    wT = renderedNodeW(to),
+    hT = renderedNodeH(to);
+  const px = +from.x + wF / 2,
+    py = +from.y + hF / 2;
+  const cx = +to.x + wT / 2,
+    cy = +to.y + hT / 2;
+
+  const clipFrom = segmentClipRect(px, py, cx, cy, +from.x, +from.y, wF, hF);
+  const clipTo = segmentClipRect(px, py, cx, cy, +to.x, +to.y, wT, hT);
+
+  let tStart = clipFrom ? clipFrom.t1 : 0;
+  let tEnd = clipTo ? clipTo.t0 : 1;
+
+  const parentCenterInsideChild =
+    px >= +to.x - MM_EDGE_CLIP_EPS &&
+    px <= +to.x + wT + MM_EDGE_CLIP_EPS &&
+    py >= +to.y - MM_EDGE_CLIP_EPS &&
+    py <= +to.y + hT + MM_EDGE_CLIP_EPS;
+  /** Parent center overlaps child's box (stacked UI); arrow meets child border facing the parent vector. */
+  if (parentCenterInsideChild && clipFrom) {
+    const crBorder = segmentClipRect(cx, cy, px, py, +to.x, +to.y, wT, hT);
+    const tBd = crBorder && crBorder.t1 > MM_EDGE_CLIP_EPS ? Math.min(crBorder.t1 - MM_EDGE_CLIP_EPS, crBorder.t1 * 0.999) : 0.015;
+    const x2 = cx + (px - cx) * tBd,
+      y2 = cy + (py - cy) * tBd,
+      x1 = px + tStart * (cx - px),
+      y1 = py + tStart * (cy - py);
+    if (Math.hypot(x2 - x1, y2 - y1) < 4) {
+      const dx = px - cx,
+        dy = py - cy,
+        d = Math.hypot(dx, dy) || 1,
+        k = Math.min(24 / d, 0.45);
+      return { x1: px, y1: py, x2: cx + dx * k, y2: cy + dy * k };
+    }
+    return { x1, y1, x2, y2 };
+  }
+
+  if (tEnd <= tStart + MM_EDGE_CLIP_EPS) {
+    if (clipTo) {
+      tEnd = clipTo.t0;
+      const segLen = Math.hypot(cx - px, cy - py) || 1;
+      const retreat = Math.min(28 / segLen, Math.max(MM_EDGE_CLIP_EPS, tEnd * 0.45));
+      tStart = Math.max(0, tEnd - retreat);
+    } else {
+      tStart = 0;
+      tEnd = 1;
+    }
+  }
+
+  tStart = Math.max(0, Math.min(tStart, 1));
+  tEnd = Math.max(MM_EDGE_CLIP_EPS, Math.min(tEnd, 1));
+  if (tEnd <= tStart + MM_EDGE_CLIP_EPS) tEnd = Math.min(1, tStart + MM_EDGE_CLIP_EPS + 1e-3);
+
+  const x1 = px + tStart * (cx - px),
+    y1 = py + tStart * (cy - py);
+  const x2 = px + tEnd * (cx - px),
+    y2 = py + tEnd * (cy - py);
+
+  return { x1, y1, x2, y2 };
+}
+
 function paintShell(el, n) {
   const s = stylesOf(n);
   el.style.backgroundColor = s.bg;
@@ -325,16 +427,35 @@ export function createMindmapFeature(ctx) {
 
   function drawEdges() {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    const defs = document.createElementNS(NS, "defs");
+    function mkMarker(id, fill) {
+      const marker = document.createElementNS(NS, "marker");
+      marker.setAttribute("id", id);
+      marker.setAttribute("markerUnits", "userSpaceOnUse");
+      marker.setAttribute("markerWidth", "10");
+      marker.setAttribute("markerHeight", "9");
+      marker.setAttribute("refX", "10");
+      marker.setAttribute("refY", "4.5");
+      marker.setAttribute("orient", "auto");
+      marker.setAttribute("viewBox", "0 0 10 9");
+      const arrowPath = document.createElementNS(NS, "path");
+      arrowPath.setAttribute("d", "M 10 4.5 L 0 0 L 0 9 Z");
+      arrowPath.setAttribute("fill", fill);
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+    }
+    mkMarker("pm-mm-arrow-end", "#7d869a");
+    mkMarker("pm-mm-arrow-end-sel", "#6c8cff");
+    svg.appendChild(defs);
+
     const M = mm(),
       nm = Object.fromEntries((M.nodes || []).map((x) => [x.id, x]));
     for (const e of M.edges || []) {
       const A = nm[e.fromNodeId],
         B = nm[e.toNodeId];
       if (!A || !B || rejectsMindmapEdges(A) || rejectsMindmapEdges(B)) continue;
-      const xa = +A.x + (+A.w || 140) / 2,
-        ya = +A.y + (+A.h || 80) / 2,
-        xb = +B.x + (+B.w || 140) / 2,
-        yb = +B.y + (+B.h || 80) / 2;
+      const { x1: xa, y1: ya, x2: xb, y2: yb } = directedMindmapEdgeSegment(A, B);
       const selected = selEdges.has(e.id);
       const hit = document.createElementNS(NS, "line");
       hit.setAttribute("class", "pm-mm-edge-hit");
@@ -355,6 +476,7 @@ export function createMindmapFeature(ctx) {
       vis.setAttribute("y2", String(yb));
       vis.setAttribute("stroke", selected ? "#6c8cff" : "#7d869a");
       vis.setAttribute("stroke-width", selected ? "3" : "2");
+      vis.setAttribute("marker-end", `url(#pm-mm-arrow-end${selected ? "-sel" : ""})`);
       svg.appendChild(hit);
       svg.appendChild(vis);
       hit.addEventListener("mousedown", (ev) => {
