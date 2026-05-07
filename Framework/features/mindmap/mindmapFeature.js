@@ -425,12 +425,17 @@ export function createMindmapFeature(ctx) {
       const im = document.createElement("img");
       im.src = n.src;
       im.alt = "";
+      im.draggable = false;
+      im.addEventListener("dragstart", (e) => e.preventDefault());
+      const imWrap = document.createElement("div");
+      imWrap.className = "pm-mm-img-wrap";
+      imWrap.appendChild(im);
       if (s.imageTitlePos === "bottom") {
-        st.append(im);
+        st.append(imWrap);
         if (s.imageHasTitle === "1") st.append(cap);
       } else {
         if (s.imageHasTitle === "1") st.append(cap);
-        st.append(im);
+        st.append(imWrap);
       }
       w.appendChild(st);
       return;
@@ -1149,6 +1154,7 @@ export function createMindmapFeature(ctx) {
       pad.dataset.nodeId = n.id;
       pad.className =
         "pm-mm-node" +
+        (String(n.type) === "image" ? " pm-mm-node-image" : "") +
         (isNote(n) ? " pm-mm-node-note" : "") +
         (isWikiLink(n) ? " pm-mm-node-wikilink" : "");
       pad.style.left = +n.x + "px";
