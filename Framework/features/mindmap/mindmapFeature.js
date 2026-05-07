@@ -903,8 +903,13 @@ export function createMindmapFeature(ctx) {
           y: ev.clientY,
           items: [
             {
-              label: "Suggest",
-              onClick: () => ctx.bus.emit(BusEvents.OPEN_SUGGESTION_FORM, { type: "mindmapNode", id: n.id }),
+              label: dev() ? "Dev note" : "Suggest",
+              onClick: () =>
+                ctx.bus.emit(BusEvents.OPEN_SUGGESTION_FORM, {
+                  type: "mindmapNode",
+                  id: n.id,
+                  kind: dev() ? "devNote" : "suggestion",
+                }),
             },
           ],
         });

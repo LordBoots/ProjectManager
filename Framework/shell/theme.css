@@ -163,6 +163,22 @@ body {
   max-width: var(--pm-sidebar-w);
 }
 
+.pm-suggestions-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--pm-border);
+}
+
+.pm-suggestions-aside-head .pm-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
 .pm-suggestions-scroll {
   flex: 1;
   overflow-y: auto;

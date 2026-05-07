@@ -19,7 +19,7 @@
 /** @typedef {{ pages: WikiPageMeta[], markdownByPageId?: Record<string, string> }} WikiData */
 
 /**
- * @typedef {{ id: string, title: string, body: string, category: string, priority: string, status: string, rejectionReason?: string, targetRefs?: EntityRef[], createdAt?: string, updatedAt?: string }} SuggestionItem
+ * @typedef {{ id: string, title: string, body: string, category: string, priority: string, status: string, rejectionReason?: string, targetRefs?: EntityRef[], kind?: 'suggestion'|'devNote', createdAt?: string, updatedAt?: string }} SuggestionItem
  */
 
 /**

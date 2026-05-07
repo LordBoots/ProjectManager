@@ -18,7 +18,7 @@ export function createKanbanFeature(ctx){
     f.style.width=t?`${Math.round(100*d/t)}%`:'0%';p.appendChild(f);el.appendChild(p);
     el.addEventListener('mouseenter',()=>ctx.bus.emit(BusEvents.ENTITY_HOVER,{type:'kanbanCard',id:card.id}));
     el.addEventListener('mouseleave',()=>ctx.bus.emit(BusEvents.ENTITY_HOVER_END,{}));
-    el.addEventListener('contextmenu',e=>{e.preventDefault();showContextMenu({x:e.clientX,y:e.clientY,items:[{label:'Add suggestion',onClick:()=>ctx.bus.emit(BusEvents.OPEN_SUGGESTION_FORM,{type:'kanbanCard',id:card.id})}]});});
+    el.addEventListener('contextmenu',e=>{e.preventDefault();showContextMenu({x:e.clientX,y:e.clientY,items:[{label:ctx.permissions.isDeveloper()?'Add dev note':'Add suggestion',onClick:()=>ctx.bus.emit(BusEvents.OPEN_SUGGESTION_FORM,{type:'kanbanCard',id:card.id,kind:ctx.permissions.isDeveloper()?'devNote':'suggestion'})}]});});
     el.addEventListener('dragstart',ev=>{if(!ctx.permissions.canEditKanban()){ev.preventDefault();return;}drag={colId:col.id,id:card.id};try{ev.dataTransfer.setData('text/plain',card.id);}catch(_){ }el.style.opacity='0.5';});
     el.addEventListener('dragend',()=>{el.style.opacity='';drag=null;});
     return el;

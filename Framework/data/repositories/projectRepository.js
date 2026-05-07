@@ -16,12 +16,31 @@ const FILES = {
   settings: 'settings.json',
 };
 
+function normalizeSuggestionItem(it) {
+  if (!it || typeof it !== 'object' || typeof /** @type {{ id?: unknown }} */ (it).id !== 'string') return null;
+  /** @type {Record<string, unknown>} */
+  const o = { .../** @type {Record<string, unknown>} */ (it) };
+  o.kind = o.kind === 'devNote' ? 'devNote' : 'suggestion';
+  return o;
+}
+
+function normalizeSuggestionList(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  /** @type {Record<string, unknown>[]} */
+  const out = [];
+  for (const it of list) {
+    const n = normalizeSuggestionItem(it);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
 function mergeSuggestions(raw) {
   const d = defaultSuggestions();
   if (!raw || typeof raw !== 'object') return d;
   return {
-    items: Array.isArray(raw.items) ? raw.items : d.items,
-    archived: Array.isArray(raw.archived) ? raw.archived : d.archived,
+    items: normalizeSuggestionList(Array.isArray(raw.items) ? raw.items : d.items),
+    archived: normalizeSuggestionList(Array.isArray(raw.archived) ? raw.archived : d.archived),
   };
 }
 
