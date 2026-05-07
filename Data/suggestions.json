@@ -1,4 +1,23 @@
 {
-  "items": [],
+  "items": [
+    {
+      "id": "sg-y0mr97mymovvwhr5",
+      "title": "Start of the Game",
+      "body": "This is where the application launches. This is the first thing the player sees.",
+      "category": "Scope",
+      "priority": "Low",
+      "status": "Pending",
+      "rejectionReason": "",
+      "targetRefs": [
+        {
+          "type": "mindmapNode",
+          "id": "n-7w06co"
+        }
+      ],
+      "kind": "devNote",
+      "createdAt": "2026-05-07T19:33:41.729Z",
+      "updatedAt": "2026-05-07T19:33:41.730Z"
+    }
+  ],
   "archived": []
 }

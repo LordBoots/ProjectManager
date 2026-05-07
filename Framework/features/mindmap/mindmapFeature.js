@@ -11,6 +11,19 @@ const WIKI_LINK_NODE_H = 76;
 const FRAME_INNER_PAD = 10;
 const FRAME_CREATE_PAD = 28;
 
+/** Font size presets for mind map node text styling (dropdown values match stored style strings). */
+const MM_FONT_SIZE_CHOICES = [
+  ["11", "11"],
+  ["12", "12"],
+  ["13", "13"],
+  ["14", "14"],
+  ["16", "16"],
+  ["18", "18"],
+  ["20", "20"],
+  ["22", "22"],
+  ["24", "24"],
+];
+
 function nid() {
   return "n-" + Math.random().toString(36).slice(2, 8);
 }
@@ -41,6 +54,8 @@ function defStyles() {
     imageHasTitle: "",
     imageTitlePos: "top",
     imageTitleAlign: "center",
+    textHasHeader: "",
+    headerFontSize: "17",
   };
 }
 function stylesOf(n) {
@@ -200,7 +215,7 @@ export function createMindmapFeature(ctx) {
   function tipUp() {
     const g = mm().snapGrid ? "ON" : "off";
     tip.textContent = dev()
-      ? `Snap ${g} Alt+S · Shift or middle-drag pan · Wheel/↑↓ · box · multiselect · group drag · F · Ctrl+N · Ctrl+E · Del · Ctrl+D · Ctrl+C/V · Undo/Redo · Ctrl+S · links · Ctrl+link · Frames (board RMB) · Esc`
+      ? `Snap ${g} Alt+S · Shift or middle-drag pan · Wheel/↑↓ · box · multiselect · group drag · F · Ctrl+N · dbl-click text · Ctrl+E · Del · Ctrl+D · Ctrl+C/V · Undo/Redo · Ctrl+S · links · Ctrl+link · Frames (board RMB) · Esc`
       : "Viewer — Shift or middle-drag pan · wheel zoom";
   }
   function mut() {
@@ -325,7 +340,7 @@ export function createMindmapFeature(ctx) {
           selFrames.clear();
           selEdges.add(e.id);
         }
-        editing = null;
+        endMindmapEditing();
         linkA = null;
         rebuildStrip();
         draw();
@@ -420,6 +435,133 @@ export function createMindmapFeature(ctx) {
       w.appendChild(st);
       return;
     }
+
+    if (n.type === "text") {
+      const hasHeader = s.textHasHeader === "1";
+      const align = s.textAlign || "left";
+      /** @param {HTMLElement} el */
+      const face = (el) => {
+        el.style.textAlign = align;
+        el.style.fontStyle = s.fontStyle || "normal";
+        el.style.textDecoration = s.textDecoration || "none";
+        el.style.color = s.fontColor || "#1a1d24";
+        el.style.fontFamily = "inherit";
+      };
+
+      if (dev() && editing === n.id) {
+        const wrap = document.createElement("div");
+        wrap.className = "pm-mm-node-inner pm-mm-node-text-stack";
+
+        /** @param {Record<string, unknown>} patch */
+        const patchNode = (patch) => {
+          ctx.store.updateMindmap((mm2) => {
+            const o = (mm2.nodes || []).find((z) => z.id === n.id);
+            if (!o || String(o.type) !== "text") return;
+            Object.assign(o, patch);
+          }, { silent: true });
+          draw();
+        };
+
+        /** @param {HTMLTextAreaElement} te */
+        const armTa = (te) => {
+          te.classList.add("pm-mm-node-edit");
+          te.addEventListener("mousedown", (e) => e.stopPropagation());
+          te.addEventListener("pointerdown", (e) => e.stopPropagation());
+          te.addEventListener("keydown", (ev) => {
+            if (ev.code === "Escape") {
+              ev.preventDefault();
+              ev.stopPropagation();
+              endMindmapEditing();
+              rebuildStrip();
+              draw();
+              inner.focus();
+            }
+          });
+        };
+
+        if (hasHeader) {
+          const hi = document.createElement("textarea");
+          hi.className = "pm-mm-node-edit pm-mm-node-edit-header";
+          hi.value = typeof n.header === "string" ? n.header : "";
+          hi.rows = 2;
+          face(hi);
+          hi.style.fontSize = (Number(s.headerFontSize) || 17) + "px";
+          hi.style.fontWeight = "600";
+          hi.style.lineHeight = "1.25";
+          hi.addEventListener("input", () => patchNode({ header: hi.value }));
+          armTa(hi);
+          wrap.appendChild(hi);
+
+          const bi = document.createElement("textarea");
+          bi.className = "pm-mm-node-edit pm-mm-node-edit-body";
+          bi.value = n.text ?? "";
+          bi.rows = 3;
+          face(bi);
+          bi.style.fontSize = (Number(s.fontSize) || 16) + "px";
+          bi.style.fontWeight = String(s.fontWeight || 400);
+          bi.style.lineHeight = "1.35";
+          bi.addEventListener("input", () => patchNode({ text: bi.value }));
+          armTa(bi);
+          wrap.appendChild(bi);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.className = "pm-mm-node-edit pm-mm-node-edit-single";
+          ta.value = n.text ?? "";
+          ta.rows = 4;
+          face(ta);
+          ta.style.fontSize = (Number(s.fontSize) || 16) + "px";
+          ta.style.fontWeight = String(s.fontWeight || 400);
+          ta.style.lineHeight = "1.35";
+          ta.addEventListener("input", () => patchNode({ text: ta.value }));
+          armTa(ta);
+          wrap.appendChild(ta);
+        }
+        w.appendChild(wrap);
+        return;
+      }
+
+      if (hasHeader) {
+        const wrap = document.createElement("div");
+        wrap.className = "pm-mm-node-inner pm-mm-node-text-stack";
+        const hEl = document.createElement("div");
+        hEl.className = "pm-mm-node-heading";
+        hEl.textContent = typeof n.header === "string" ? n.header : "";
+        face(hEl);
+        hEl.style.whiteSpace = "pre-wrap";
+        hEl.style.fontSize = (Number(s.headerFontSize) || 17) + "px";
+        hEl.style.fontWeight = "600";
+        hEl.style.lineHeight = "1.25";
+        hEl.style.flexShrink = "0";
+
+        const bEl = document.createElement("div");
+        bEl.className = "pm-mm-node-bodytext pm-mm-node-text";
+        bEl.textContent = n.text ?? "";
+        face(bEl);
+        bEl.style.whiteSpace = "pre-wrap";
+        bEl.style.fontSize = (Number(s.fontSize) || 16) + "px";
+        bEl.style.fontWeight = String(s.fontWeight || 400);
+        bEl.style.lineHeight = "1.35";
+        bEl.style.flex = "1";
+        bEl.style.minHeight = "0";
+        bEl.style.overflow = "auto";
+
+        wrap.append(hEl, bEl);
+        w.appendChild(wrap);
+        return;
+      }
+
+      const te = document.createElement("div");
+      te.className = "pm-mm-node-text pm-mm-node-inner";
+      te.textContent = n.text ?? "";
+      face(te);
+      te.style.whiteSpace = "pre-wrap";
+      te.style.fontSize = (Number(s.fontSize) || 16) + "px";
+      te.style.fontWeight = String(s.fontWeight || 400);
+      te.style.lineHeight = "1.35";
+      w.appendChild(te);
+      return;
+    }
+
     const t = document.createElement("div");
     t.className = "pm-mm-node-text pm-mm-node-inner";
     t.textContent = n.text ?? "";
@@ -432,6 +574,38 @@ export function createMindmapFeature(ctx) {
     w.appendChild(t);
   }
 
+  /** Persist in-DOM text node editors before redraw removes their textareas. */
+  function flushTextNodeEditors() {
+    if (!editing || !dev()) return;
+    const nid = editing;
+    const node = (mm().nodes || []).find((z) => z.id === nid);
+    if (!node || String(node.type) !== "text") return;
+    const pane = plane.querySelector(`[data-node-id="${nid}"]`);
+    if (!pane) return;
+    const hdr = pane.querySelector(".pm-mm-node-edit-header");
+    const body = pane.querySelector(".pm-mm-node-edit-body");
+    const single = pane.querySelector(".pm-mm-node-edit-single");
+    if (hdr && body) {
+      ctx.store.updateMindmap((mm2) => {
+        const o = (mm2.nodes || []).find((z) => z.id === nid);
+        if (!o) return;
+        o.header = hdr.value;
+        o.text = body.value;
+      }, { silent: true });
+    } else if (single) {
+      ctx.store.updateMindmap((mm2) => {
+        const o = (mm2.nodes || []).find((z) => z.id === nid);
+        if (!o) return;
+        o.text = single.value;
+      }, { silent: true });
+    }
+  }
+
+  function endMindmapEditing() {
+    flushTextNodeEditors();
+    editing = null;
+  }
+
   function rebuildStrip() {
     strip.replaceChildren();
     const on = editing !== null;
@@ -439,7 +613,7 @@ export function createMindmapFeature(ctx) {
     if (!on) return;
     const n = (mm().nodes || []).find((x) => x.id === editing);
     if (!n) {
-      editing = null;
+      endMindmapEditing();
       strip.classList.remove("pm-mm-styles-visible");
       return;
     }
@@ -469,6 +643,7 @@ export function createMindmapFeature(ctx) {
         x.appendChild(o);
       });
       x.value = val;
+      if (![...x.options].some((o) => o.value === x.value)) x.value = pairs[0][0];
       x.addEventListener("change", () => setk(k, x.value));
       return x;
     };
@@ -499,25 +674,57 @@ export function createMindmapFeature(ctx) {
       "radius",
       cur.radius
     ));
-    if (n.type === "text" || n.type === "note") {
-      row("Size", mkSel(
-        [
-          ["13", "13"],
-          ["16", "16"],
-          ["20", "20"],
-        ],
-        "fontSize",
-        cur.fontSize
-      ));
-      row("Align", mkSel(
-        [
-          ["left", "L"],
-          ["center", "C"],
-          ["right", "R"],
-        ],
-        "textAlign",
-        cur.textAlign
-      ));
+    if (n.type === "text") {
+      const hc = document.createElement("input");
+      hc.type = "checkbox";
+      hc.checked = cur.textHasHeader === "1";
+      hc.addEventListener("change", () => {
+        const on = hc.checked;
+        ctx.store.updateMindmap((m2) => {
+          const o = (m2.nodes || []).find((z) => z.id === editing);
+          if (!o) return;
+          o.styles = { ...stylesOf(o), textHasHeader: on ? "1" : "" };
+          if (on && typeof o.header !== "string") o.header = "";
+        });
+        draw();
+      });
+      row("Show header", hc);
+      if (cur.textHasHeader === "1") {
+        row(
+          "Header size",
+          mkSel(MM_FONT_SIZE_CHOICES, "headerFontSize", String(Number(cur.headerFontSize) || 17))
+        );
+      }
+      row(
+        cur.textHasHeader === "1" ? "Body size" : "Size",
+        mkSel(MM_FONT_SIZE_CHOICES, "fontSize", String(Number(cur.fontSize) || 16))
+      );
+      row(
+        "Align",
+        mkSel(
+          [
+            ["left", "L"],
+            ["center", "C"],
+            ["right", "R"],
+          ],
+          "textAlign",
+          cur.textAlign
+        )
+      );
+    } else if (n.type === "note") {
+      row("Size", mkSel(MM_FONT_SIZE_CHOICES, "fontSize", String(Number(cur.fontSize) || 16)));
+      row(
+        "Align",
+        mkSel(
+          [
+            ["left", "L"],
+            ["center", "C"],
+            ["right", "R"],
+          ],
+          "textAlign",
+          cur.textAlign
+        )
+      );
     }
     if (n.type === "image") {
       row("Title", mkSel(
@@ -542,7 +749,7 @@ export function createMindmapFeature(ctx) {
     done.className = "pm-btn";
     done.textContent = "Done";
     done.addEventListener("click", () => {
-      editing = null;
+      endMindmapEditing();
       rebuildStrip();
       draw();
     });
@@ -782,7 +989,7 @@ export function createMindmapFeature(ctx) {
         selEdges.clear();
         selFrames.clear();
         selFrames.add(fr.id);
-        editing = null;
+        endMindmapEditing();
         rebuildStrip();
         dragFR = {
           fid: fr.id,
@@ -804,7 +1011,7 @@ export function createMindmapFeature(ctx) {
       selEdges.clear();
       selFrames.clear();
       selFrames.add(fr.id);
-      editing = null;
+      endMindmapEditing();
       rebuildStrip();
       const orig = new Map();
       orig.set("__frame__", { x: +fr.x, y: +fr.y });
@@ -868,7 +1075,7 @@ export function createMindmapFeature(ctx) {
           selEdges.clear();
           sel.clear();
           selFrames.has(fr.id) ? selFrames.delete(fr.id) : selFrames.add(fr.id);
-          editing = null;
+          endMindmapEditing();
           rebuildStrip();
           draw();
           return;
@@ -900,6 +1107,27 @@ export function createMindmapFeature(ctx) {
   }
 
   function draw() {
+    flushTextNodeEditors();
+
+    /** Capture focused text field before DOM is replaced (edit mode + live store updates). */
+    let taSnap = null;
+    if (editing !== null && dev()) {
+      const pane = plane.querySelector(`[data-node-id="${editing}"]`);
+      const ae = document.activeElement;
+      if (pane && ae instanceof HTMLTextAreaElement && pane.contains(ae)) {
+        taSnap = {
+          nid: editing,
+          kind: ae.classList.contains("pm-mm-node-edit-header")
+            ? "h"
+            : ae.classList.contains("pm-mm-node-edit-body")
+              ? "b"
+              : "s",
+          start: ae.selectionStart,
+          end: ae.selectionEnd,
+        };
+      }
+    }
+
     const m = mm();
     for (const eid of [...selEdges]) {
       if (!(m.edges || []).some((ed) => ed.id === eid)) selEdges.delete(eid);
@@ -944,7 +1172,16 @@ export function createMindmapFeature(ctx) {
       pad.addEventListener("mouseenter", () => ctx.bus.emit(BusEvents.ENTITY_HOVER, { type: "mindmapNode", id: n.id }));
       pad.addEventListener("mousedown", (ev) => {
         ev.stopPropagation();
-        if (!ev.shiftKey) inner.focus();
+        /** Clicks on the text-edit stack bubble to pad; skipping this would call inner.focus() and endMindmapEditing(), nuking textarea focus/caret (header vs body especially). */
+        const onActiveTextEditor =
+          !ev.shiftKey &&
+          dev() &&
+          editing === n.id &&
+          String(n.type) === "text" &&
+          ev.target instanceof Element &&
+          ev.target.closest(".pm-mm-node-text-stack");
+
+        if (!onActiveTextEditor && !ev.shiftKey) inner.focus();
         if (!dev()) {
           selEdges.clear();
           selFrames.clear();
@@ -958,7 +1195,7 @@ export function createMindmapFeature(ctx) {
           selEdges.clear();
           sel.has(n.id) ? sel.delete(n.id) : sel.add(n.id);
           selFrames.clear();
-          editing = null;
+          endMindmapEditing();
           rebuildStrip();
           draw();
           return;
@@ -969,8 +1206,10 @@ export function createMindmapFeature(ctx) {
           sel.clear();
           sel.add(n.id);
         }
-        editing = null;
-        rebuildStrip();
+        if (!onActiveTextEditor) {
+          endMindmapEditing();
+          rebuildStrip();
+        }
         if (ev.ctrlKey || ev.metaKey) {
           if (rejectsMindmapEdges(n)) {
             linkA = null;
@@ -1022,6 +1261,27 @@ export function createMindmapFeature(ctx) {
         if (!dev()) return;
         if (isWikiLink(n)) return;
         ev.stopPropagation();
+        if (n.type === "text") {
+          mut();
+          editing = n.id;
+          selEdges.clear();
+          selFrames.clear();
+          if (!sel.has(n.id)) {
+            sel.clear();
+            sel.add(n.id);
+          }
+          rebuildStrip();
+          draw();
+          requestAnimationFrame(() => {
+            const pane = plane.querySelector(`[data-node-id="${n.id}"]`);
+            const focusEl =
+              pane?.querySelector(".pm-mm-node-edit-header") ??
+              pane?.querySelector(".pm-mm-node-edit-single") ??
+              pane?.querySelector(".pm-mm-node-edit-body");
+            focusEl?.focus?.();
+          });
+          return;
+        }
         const nt = prompt("Edit label", String(n.text || ""));
         if (nt === null) return;
         mut();
@@ -1069,6 +1329,27 @@ export function createMindmapFeature(ctx) {
     drawEdges();
     tipUp();
     syncLinkDropHint();
+
+    if (taSnap) {
+      const snap = taSnap;
+      requestAnimationFrame(() => {
+        const pane = plane.querySelector(`[data-node-id="${snap.nid}"]`);
+        if (!pane) return;
+        const te =
+          snap.kind === "h"
+            ? pane.querySelector(".pm-mm-node-edit-header")
+            : snap.kind === "b"
+              ? pane.querySelector(".pm-mm-node-edit-body")
+              : pane.querySelector(".pm-mm-node-edit-single");
+        if (!te || !(te instanceof HTMLTextAreaElement)) return;
+        te.focus();
+        try {
+          const a = Math.max(0, Math.min(snap.start, te.value.length));
+          const b = Math.max(0, Math.min(snap.end, te.value.length));
+          te.setSelectionRange(a, b);
+        } catch (_) {}
+      });
+    }
   }
 
   inner.addEventListener(
@@ -1302,6 +1583,14 @@ export function createMindmapFeature(ctx) {
     const tag = (ev.target && ev.target.tagName) || "";
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
+    if (ev.code === "Escape" && editing !== null && dev()) {
+      ev.preventDefault();
+      endMindmapEditing();
+      rebuildStrip();
+      draw();
+      return;
+    }
+
     if (ev.code === "Escape" && linkDraft) {
       ev.preventDefault();
       linkDraft = null;
@@ -1400,7 +1689,7 @@ export function createMindmapFeature(ctx) {
         }
       });
       sel.clear();
-      editing = null;
+      endMindmapEditing();
       rebuildStrip();
       draw();
       return;
@@ -1425,7 +1714,8 @@ export function createMindmapFeature(ctx) {
       ev.preventDefault();
       const f = [...sel][0];
       if (!f) return;
-      editing = editing === f ? null : f;
+      if (editing === f) endMindmapEditing();
+      else editing = f;
       rebuildStrip();
       draw();
       return;
@@ -1453,7 +1743,7 @@ export function createMindmapFeature(ctx) {
               h: WIKI_LINK_NODE_H,
               styles: {},
             };
-          } else node = { id, type: "text", text: "Node", x: 100, y: 100, w: 160, h: 90, styles: {} };
+          } else node = { id, type: "text", header: "", text: "Node", x: 100, y: 100, w: 180, h: 100, styles: {} };
           mm2.nodes = [...(mm2.nodes || []), node];
         });
         draw();

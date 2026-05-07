@@ -3,11 +3,11 @@
     {
       "id": "n-7w06co",
       "type": "text",
-      "text": "Node",
+      "text": "Node not a doodle but more a poodle",
       "x": 32,
-      "y": 64,
-      "w": 160,
-      "h": 90,
+      "y": 32,
+      "w": 192,
+      "h": 128,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5c7fbc",
@@ -23,15 +23,18 @@
         "fontFamily": "inherit",
         "imageHasTitle": "",
         "imageTitlePos": "top",
-        "imageTitleAlign": "center"
-      }
+        "imageTitleAlign": "center",
+        "textHasHeader": "1",
+        "headerFontSize": "17"
+      },
+      "header": "Glooper"
     },
     {
       "id": "n-shgx5w",
       "type": "note",
       "text": "Note",
-      "x": 224,
-      "y": 176,
+      "x": 240,
+      "y": 144,
       "w": 96,
       "h": 44,
       "styles": {}
@@ -40,21 +43,21 @@
       "id": "n-oqbpyg",
       "type": "text",
       "text": "Node",
-      "x": 224,
-      "y": 64,
+      "x": 240,
+      "y": 32,
       "w": 160,
       "h": 90,
       "styles": {}
     },
     {
-      "id": "n-fo4ezh",
+      "id": "n-2j9434",
       "type": "wikiLink",
       "wikiPageId": "p-intro",
       "text": "Introduction",
-      "x": 448,
-      "y": 128,
+      "x": 416,
+      "y": 32,
       "w": 200,
-      "h": 64,
+      "h": 76,
       "styles": {}
     }
   ],
@@ -69,21 +72,21 @@
     {
       "id": "f-4x8iyd",
       "x": 16,
-      "y": 48,
-      "w": 656,
+      "y": 16,
+      "w": 624,
       "h": 192,
       "memberIds": [
         "n-7w06co",
         "n-shgx5w",
         "n-oqbpyg",
-        "n-fo4ezh"
+        "n-2j9434"
       ]
     }
   ],
   "view": {
-    "x": 174.8456426381348,
-    "y": 222.8101397678958,
-    "scale": 0.9035826357366062
+    "x": 461.4912820135055,
+    "y": 315.80979470626056,
+    "scale": 0.739790891824819
   },
   "snapGrid": true
 }

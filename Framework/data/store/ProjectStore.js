@@ -33,11 +33,15 @@ export function createProjectStore(initial) {
     notify();
   }
 
-  function updateMindmap(mutator) {
-    const mm = deepClone(state.mindmap);
+  function updateMindmap(mutator, opts) {
+    const raw = state.mindmap;
+    const mm =
+      raw != null && typeof raw === "object"
+        ? deepClone(raw)
+        : deepClone({ nodes: [], edges: [], frames: [], view: { x: 0, y: 0, scale: 1 } });
     mutator(mm);
     state = { ...state, mindmap: mm };
-    notify();
+    if (!opts || !opts.silent) notify();
   }
 
   function updateKanban(mutator) {

@@ -2,7 +2,7 @@ import { newDataUid } from '../../sync/dataUid.js';
 
 /** @typedef {{ uid: string }} VersionFile */
 
-/** @typedef {{ id: string, type: string, text?: string, src?: string, wikiPageId?: string, x: number, y: number, w: number, h: number, styles?: Record<string, unknown>, note?: boolean }} MindMapNode */
+/** @typedef {{ id: string, type: string, text?: string, header?: string, src?: string, wikiPageId?: string, x: number, y: number, w: number, h: number, styles?: Record<string, unknown>, note?: boolean }} MindMapNode */
 
 /** @typedef {{ id: string, fromNodeId: string, toNodeId: string }} MindMapEdge */
 
