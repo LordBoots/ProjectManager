@@ -530,6 +530,67 @@ img.pm-wiki-icon-img {
   overflow: hidden;
 }
 
+.pm-wiki-toc-slot {
+  flex-shrink: 0;
+}
+
+.pm-wiki-toc {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-md);
+  background: color-mix(in srgb, var(--pm-surface-elevated) 82%, transparent);
+}
+
+.pm-wiki-toc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.pm-wiki-toc-title {
+  color: var(--pm-text);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.pm-wiki-toc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.pm-wiki-toc-table td {
+  border: 1px solid var(--pm-border);
+  padding: 0.28rem 0.35rem;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.pm-wiki-toc-row-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.15rem;
+  margin: 0;
+  outline: none;
+}
+
+.pm-wiki-toc-row-remove-cell {
+  width: 2rem;
+  text-align: center;
+  background: color-mix(in srgb, var(--pm-border) 6%, transparent);
+}
+
+.pm-wiki-toc-add {
+  flex-shrink: 0;
+}
+
 .pm-wiki-blocks {
   flex: 1;
   overflow-y: auto;

@@ -16,13 +16,14 @@ import { newDataUid } from '../../sync/dataUid.js';
 
 /** @typedef {{ columns: KanbanColumn[] }} KanbanData */
 
-/** @typedef {{ id: string, title: string, description?: string, icon?: string }} WikiPageMeta */
+/** @typedef {{ id: string, text: string }} WikiTocRow */
+/** @typedef {{ id: string, title: string, description?: string, icon?: string, tableOfContents?: WikiTocRow[] }} WikiPageMeta */
 
 /**
  * @typedef {{ id: string, type: 'text', content: string }} WikiBlockText
  * @typedef {{ id: string, type: 'image', src: string, alt?: string }} WikiBlockImage
  * @typedef {{ id: string, cells: string[] }} WikiTableRow
- * @typedef {{ id: string, type: 'table', rows: WikiTableRow[] }} WikiBlockTable
+ * @typedef {{ id: string, type: 'table', title?: string, rows: WikiTableRow[] }} WikiBlockTable
  * @typedef {{ id: string, type: 'separator' }} WikiBlockSeparator
  * @typedef {WikiBlockText|WikiBlockImage|WikiBlockTable|WikiBlockSeparator} WikiBlock
  */
@@ -85,6 +86,7 @@ export function defaultWiki() {
         title: 'Introduction',
         description: '',
         icon: '📄',
+        tableOfContents: [],
       },
     ],
     markdownByPageId: {},

@@ -153,6 +153,7 @@ function coerceWikiBlock(raw) {
     return {
       id: bid,
       type: /** @type {'table'} */ ('table'),
+      title: typeof /** @type {{ title?: unknown }} */ (raw).title === 'string' ? /** @type {{ title: string }} */ (raw).title : '',
       rows: safe,
     };
   }

@@ -47,6 +47,32 @@ function newTableRowId() {
   return `br-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function newTocRowId() {
+  return `toc-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** @param {unknown} raw */
+function normalizeTocRows(raw) {
+  const rows = Array.isArray(raw) ? raw : [];
+  /** @type {{ id: string, text: string }[]} */
+  const out = [];
+  for (const row of rows) {
+    if (typeof row === 'string') {
+      out.push({ id: newTocRowId(), text: row });
+    } else if (row && typeof row === 'object') {
+      const id =
+        typeof /** @type {{id?:unknown}} */ (row).id === 'string' && /** @type {{id:string}} */ (row).id.trim()
+          ? /** @type {{id:string}} */ (row).id.trim()
+          : newTocRowId();
+      const text = typeof /** @type {{text?:unknown}} */ (row).text === 'string'
+        ? /** @type {{text:string}} */ (row).text
+        : '';
+      out.push({ id, text });
+    }
+  }
+  return out;
+}
+
 function newBlockId() {
   return `b-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -378,15 +404,19 @@ export function createWikiFeature(ctx) {
   const editor = document.createElement('div');
   editor.className = 'pm-wiki-editor';
 
+  const tocEl = document.createElement('div');
+  tocEl.className = 'pm-wiki-toc-slot';
+
   const blocksEl = document.createElement('div');
   blocksEl.className = 'pm-wiki-blocks';
 
-  editor.appendChild(blocksEl);
+  editor.append(tocEl, blocksEl);
   root.append(toolbar, title, editor);
 
   let selectedPageId = /** @type {string | null} */ (null);
   /** Draft blocks for the selected page — stays in JS until flushed to store */
   let draftBlocks = /** @type {unknown[]} */ ([]);
+  let tocRows = /** @type {{ id: string, text: string }[]} */ ([]);
   let saveTimer = null;
 
   const canEdit = () => ctx.permissions.canEditWiki();
@@ -418,6 +448,7 @@ export function createWikiFeature(ctx) {
         ...pg[i],
         title: title.value.trim() || pg[i].title,
         description: excerptFromDraft(draftBlocks),
+        tableOfContents: structuredClone(tocRows),
       };
       w.pages = pg;
       w.blocksByPageId = {
@@ -908,6 +939,88 @@ export function createWikiFeature(ctx) {
     }
   }
 
+  function renderToc() {
+    tocEl.replaceChildren();
+    if (!selectedPageId) return;
+
+    const visibleRows = tocRows.filter((row) => row.text.trim());
+    if (!canEdit() && visibleRows.length === 0) return;
+
+    const section = document.createElement('section');
+    section.className = 'pm-wiki-toc';
+
+    const head = document.createElement('div');
+    head.className = 'pm-wiki-toc-head';
+    const label = document.createElement('div');
+    label.className = 'pm-wiki-toc-title';
+    label.textContent = 'Table of contents';
+    head.appendChild(label);
+
+    const table = document.createElement('table');
+    table.className = 'pm-wiki-toc-table';
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+
+    const rows = canEdit() ? tocRows : visibleRows;
+    for (let ri = 0; ri < rows.length; ri++) {
+      const row = rows[ri];
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      if (canEdit()) {
+        const inp = document.createElement('input');
+        inp.className = 'pm-wiki-toc-row-input';
+        inp.placeholder = 'Section or note';
+        inp.value = row.text;
+        inp.addEventListener('input', () => {
+          row.text = inp.value;
+          schedulePersist();
+        });
+        td.appendChild(inp);
+      } else {
+        td.textContent = row.text.trim();
+      }
+      tr.appendChild(td);
+
+      if (canEdit()) {
+        const actionTd = document.createElement('td');
+        actionTd.className = 'pm-wiki-toc-row-remove-cell';
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'pm-wiki-block-remove';
+        rm.textContent = '×';
+        rm.title = 'Remove table of contents row';
+        rm.addEventListener('click', (e) => {
+          e.preventDefault();
+          tocRows.splice(ri, 1);
+          flushToStore();
+          renderToc();
+        });
+        actionTd.appendChild(rm);
+        tr.appendChild(actionTd);
+      }
+
+      tbody.appendChild(tr);
+    }
+
+    if (canEdit()) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'pm-btn pm-btn-ghost pm-wiki-toc-add';
+      add.textContent = 'Add row';
+      add.addEventListener('click', () => {
+        tocRows.push({ id: newTocRowId(), text: '' });
+        flushToStore();
+        renderToc();
+        const last = tocEl.querySelector('.pm-wiki-toc-table tr:last-child input');
+        if (last instanceof HTMLInputElement) last.focus();
+      });
+      head.appendChild(add);
+    }
+
+    section.append(head, table);
+    tocEl.appendChild(section);
+  }
+
   /**
    * @param pref {string | null | undefined}
    */
@@ -940,6 +1053,8 @@ export function createWikiFeature(ctx) {
     if (!selectedPageId) {
       title.value = '';
       draftBlocks = [];
+      tocRows = [];
+      renderToc();
       renderBlocks();
       syncWikiIconChrome();
       return;
@@ -947,6 +1062,8 @@ export function createWikiFeature(ctx) {
 
     const meta = list.find((x) => x.id === selectedPageId);
     title.value = meta?.title ?? '';
+    tocRows = normalizeTocRows(meta && typeof meta === 'object' ? /** @type {{tableOfContents?:unknown}} */ (meta).tableOfContents : []);
+    renderToc();
     draftBlocks = blocksForPage(selectedPageId);
     renderBlocks();
     syncWikiIconChrome();
@@ -982,6 +1099,7 @@ export function createWikiFeature(ctx) {
         title: 'Untitled page',
         description: '',
         icon: '📄',
+        tableOfContents: [],
       });
       w.pages = np;
       w.blocksByPageId = {
