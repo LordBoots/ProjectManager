@@ -979,6 +979,66 @@ tr.pm-wiki-table-row--flash {
   z-index: 3;
 }
 
+/* Frame titles: layer above `.pm-mm-node`; invisible hit strips show label on hover. */
+.pm-mm-frame-titles-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 28;
+}
+
+.pm-mm-frame-title-host {
+  position: absolute;
+  transform: translateY(calc(-100% - 2px));
+  pointer-events: auto;
+}
+
+.pm-mm-frame-title-hit {
+  display: inline-block;
+  min-width: 4rem;
+  min-height: 1.25rem;
+  padding: 2px;
+  cursor: default;
+}
+
+.pm-mm-frame-title-text {
+  display: inline-block;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+  font-size: 0.7rem;
+  font-weight: 600;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--pm-text-muted, #5c6478);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--pm-border, rgba(0, 0, 0, 0.14));
+  box-shadow: var(--pm-shadow-soft, 0 1px 3px rgba(0, 0, 0, 0.12));
+  pointer-events: none;
+}
+
+.pm-mm-frame-title-host:hover .pm-mm-frame-title-text,
+.pm-mm-frame-title-host:focus-within .pm-mm-frame-title-text {
+  opacity: 1;
+}
+
+.pm-mm-frame-title-text--empty {
+  font-weight: 500;
+  font-style: italic;
+}
+
+.pm-mm-frame-title-input {
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 7rem;
+  max-width: 14rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
 .pm-mm-node {
   position: absolute;
   border-radius: var(--pm-radius-md);

@@ -209,6 +209,10 @@ export function createMindmapFeature(ctx) {
   linkDropHint.className = "pm-mm-link-drop-hint";
   plane.appendChild(linkDropHint);
 
+  /** Drawn last in `draw()` so titles sit above nodes; hit targets have `pointer-events: auto`. */
+  const frameTitlesLayer = document.createElement("div");
+  frameTitlesLayer.className = "pm-mm-frame-titles-layer";
+
   function snapFn() {
     return mm().snapGrid === true ? (x) => Math.round(x / GRID) * GRID : (x) => x;
   }
@@ -951,7 +955,7 @@ export function createMindmapFeature(ctx) {
     const h = SF(Math.max(56, y1 - y0 + 2 * FRAME_CREATE_PAD));
     const memberIds = [...sel];
     ctx.store.updateMindmap((m) => {
-      m.frames = [...(m.frames || []), { id, x, y, w, h, memberIds }];
+      m.frames = [...(m.frames || []), { id, x, y, w, h, memberIds, title: "" }];
     });
     sel.clear();
     selEdges.clear();
@@ -968,6 +972,7 @@ export function createMindmapFeature(ctx) {
     if (ev.shiftKey) return false;
     if (!plane.contains(/** @type {Node} */ (ev.target))) return false;
     const t = ev.target;
+    if (t.closest && t.closest(".pm-mm-frame-title-host")) return false;
     if (t.closest && (t.closest(".pm-mm-node") || t.closest(".pm-mm-edge-hit"))) return false;
     const p = planeFromClient(ev.clientX, ev.clientY);
     if (hitNodePlane(p.x, p.y)) return false;
@@ -1109,6 +1114,114 @@ export function createMindmapFeature(ctx) {
       });
     }
     framesWrap.appendChild(box);
+  }
+
+  function paintFrameTitleOverlays() {
+    const ae = document.activeElement;
+    if (ae instanceof HTMLInputElement && ae.classList.contains("pm-mm-frame-title-input")) {
+      const host = ae.closest(".pm-mm-frame-title-host");
+      const fid = host?.dataset?.frameId;
+      if (fid) {
+        const nextVal = ae.value.trim();
+        const prevF = (mm().frames || []).find((ff) => ff.id === fid);
+        const prevVal = typeof prevF?.title === "string" ? prevF.title.trim() : "";
+        if (nextVal !== prevVal) {
+          mut();
+          ctx.store.updateMindmap((mm2) => {
+            const f = (mm2.frames || []).find((ff) => ff.id === fid);
+            if (f) f.title = nextVal;
+          }, { silent: true });
+        }
+      }
+    }
+
+    frameTitlesLayer.replaceChildren();
+    for (const fr of mm().frames || []) {
+      const stored = typeof fr.title === "string" ? fr.title.trim() : "";
+      if (!dev() && !stored) continue;
+
+      const fx = +fr.x,
+        fy = +fr.y;
+
+      const host = document.createElement("div");
+      host.className = "pm-mm-frame-title-host";
+      host.dataset.frameId = fr.id;
+      host.style.left = fx + 8 + "px";
+      host.style.top = fy + "px";
+
+      const hit = document.createElement("div");
+      hit.className = "pm-mm-frame-title-hit";
+      hit.title = dev() ? "Frame title" : stored;
+
+      const lab = document.createElement("span");
+      lab.className = "pm-mm-frame-title-text" + (!stored ? " pm-mm-frame-title-text--empty" : "");
+      lab.textContent = stored || "Add title";
+
+      hit.appendChild(lab);
+
+      if (dev()) {
+        hit.addEventListener("mousedown", (e) => e.stopPropagation());
+        hit.addEventListener("pointerdown", (e) => e.stopPropagation());
+        hit.addEventListener("dblclick", (e) => e.stopPropagation());
+
+        hit.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!dev() || hit.querySelector(".pm-mm-frame-title-input")) return;
+
+          const prevSnapshot = (typeof fr.title === "string" ? fr.title : "").trim();
+
+          lab.style.display = "none";
+          const inp = document.createElement("input");
+          inp.type = "text";
+          inp.className = "pm-mm-frame-title-input pm-input";
+          inp.placeholder = "Frame title";
+          inp.value = typeof fr.title === "string" ? fr.title : "";
+          hit.appendChild(inp);
+          inp.focus();
+          inp.select();
+
+          const finalize = (commit) => {
+            const inpEl = hit.querySelector("input.pm-mm-frame-title-input");
+            if (!inpEl) return;
+            const nextVal = inpEl.value.trim();
+            inpEl.remove();
+            lab.style.display = "";
+            const shown = commit ? nextVal : prevSnapshot;
+            lab.textContent = shown || "Add title";
+            lab.classList.toggle("pm-mm-frame-title-text--empty", !shown);
+
+            if (commit && nextVal !== prevSnapshot) {
+              mut();
+              const fid = fr.id;
+              ctx.store.updateMindmap((mm2) => {
+                const f = (mm2.frames || []).find((ff) => ff.id === fid);
+                if (!f) return;
+                f.title = nextVal;
+              });
+              draw();
+            }
+          };
+
+          inp.addEventListener("blur", () => finalize(true));
+          inp.addEventListener("keydown", (ev) => {
+            if (ev.key === "Escape") {
+              ev.preventDefault();
+              ev.stopPropagation();
+              finalize(false);
+            } else if (ev.key === "Enter") {
+              ev.preventDefault();
+              inp.blur();
+            }
+          });
+        });
+      }
+
+      host.appendChild(hit);
+      frameTitlesLayer.appendChild(host);
+    }
+
+    plane.appendChild(frameTitlesLayer);
   }
 
   function draw() {
@@ -1336,6 +1449,8 @@ export function createMindmapFeature(ctx) {
     tipUp();
     syncLinkDropHint();
 
+    paintFrameTitleOverlays();
+
     if (taSnap) {
       const snap = taSnap;
       requestAnimationFrame(() => {
@@ -1388,7 +1503,15 @@ export function createMindmapFeature(ctx) {
       }
       if (ev.shiftKey && ev.button === 0) {
         const t = ev.target;
-        if (t.closest && !(t.closest(".pm-mm-node") || t.closest(".pm-mm-edge-hit") || t.closest(".pm-mm-frame")))
+        if (
+          t.closest &&
+          !(
+            t.closest(".pm-mm-node") ||
+            t.closest(".pm-mm-edge-hit") ||
+            t.closest(".pm-mm-frame") ||
+            t.closest(".pm-mm-frame-title-host")
+          )
+        )
           dragP = { sx: ev.clientX, sy: ev.clientY, vx, vy };
         return;
       }
@@ -1417,6 +1540,7 @@ export function createMindmapFeature(ctx) {
       !t.closest(".pm-mm-node") &&
       !t.closest(".pm-mm-frame") &&
       !t.closest(".pm-mm-frame-res-h") &&
+      !t.closest(".pm-mm-frame-title-host") &&
       !t.closest(".pm-mm-edge-hit");
     if (!onBoard || !sel.size) return;
     ev.preventDefault();

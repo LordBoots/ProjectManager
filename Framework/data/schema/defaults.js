@@ -6,7 +6,7 @@ import { newDataUid } from '../../sync/dataUid.js';
 
 /** @typedef {{ id: string, fromNodeId: string, toNodeId: string }} MindMapEdge */
 
-/** @typedef {{ id: string, x: number, y: number, w: number, h: number, memberIds: string[] }} MindMapFrame */
+/** @typedef {{ id: string, x: number, y: number, w: number, h: number, memberIds: string[], title?: string }} MindMapFrame */
 
 /** @typedef {{ nodes: MindMapNode[], edges: MindMapEdge[], frames?: MindMapFrame[], view: { x: number, y: number, scale: number }, snapGrid?: boolean }} MindMapData */
 
