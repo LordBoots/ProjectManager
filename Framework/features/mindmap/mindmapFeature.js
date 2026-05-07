@@ -15,6 +15,8 @@ const FRAME_CREATE_PAD = 28;
 const IMAGE_MIN_W = 64;
 const IMAGE_MIN_H = 48;
 const IMAGE_ANCHOR_HIT_PX = 18;
+const LABEL_DEFAULT_BG = "#3f444d";
+const LABEL_DEFAULT_FONT_COLOR = "#f4f6fb";
 
 /** Font size presets for mind map node text styling (dropdown values match stored style strings). */
 const MM_FONT_SIZE_CHOICES = [
@@ -107,6 +109,9 @@ function imageAspect(n) {
 }
 function imageAnchorSelectionKey(nodeId, anchorId) {
   return String(nodeId) + ":" + String(anchorId);
+}
+function styledValue(n, key, fallback) {
+  return n.styles && Object.prototype.hasOwnProperty.call(n.styles, key) ? n.styles[key] : fallback;
 }
 function wikiTopBandExtraH(n) {
   return isWikiLink(n) && stylesOf(n).topBand ? WIKI_TOP_BAND_EXTRA_H : 0;
@@ -248,7 +253,7 @@ function directedEdgePointToNode(ax, ay, to) {
 
 function paintShell(el, n) {
   const s = stylesOf(n);
-  el.style.backgroundColor = s.bg;
+  el.style.backgroundColor = isLabel(n) ? styledValue(n, "bg", LABEL_DEFAULT_BG) : s.bg;
   el.style.borderRadius = (Number(s.radius) || 12) + "px";
   el.style.borderStyle = "solid";
   el.style.borderWidth = "2px";
@@ -964,7 +969,7 @@ export function createMindmapFeature(ctx) {
         ta.style.fontWeight = String(s.fontWeight || "500");
         ta.style.fontStyle = s.fontStyle || "normal";
         ta.style.textDecoration = s.textDecoration || "none";
-        ta.style.color = s.fontColor || "#1a1d24";
+        ta.style.color = styledValue(n, "fontColor", LABEL_DEFAULT_FONT_COLOR);
         ta.style.lineHeight = "1.3";
         ta.addEventListener("input", () => patchNode({ text: ta.value }));
         ta.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -993,7 +998,7 @@ export function createMindmapFeature(ctx) {
       te.style.fontWeight = String(s.fontWeight || "500");
       te.style.fontStyle = s.fontStyle || "normal";
       te.style.textDecoration = s.textDecoration || "none";
-      te.style.color = s.fontColor || "#1a1d24";
+      te.style.color = styledValue(n, "fontColor", LABEL_DEFAULT_FONT_COLOR);
       te.style.lineHeight = "1.3";
       w.appendChild(te);
       return;

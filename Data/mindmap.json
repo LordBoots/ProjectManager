@@ -86,7 +86,7 @@
       "x": 256,
       "y": 416,
       "w": 288,
-      "h": 209.90885138253063,
+      "h": 209.90882028921294,
       "styles": {},
       "imageW": 1168,
       "imageH": 784,
@@ -100,7 +100,25 @@
       "y": 400,
       "w": 120,
       "h": 44,
-      "styles": {}
+      "styles": {
+        "bg": "#3a3636",
+        "borderColor": "#4a5870",
+        "topBand": "",
+        "shadow": "1",
+        "radius": "12",
+        "fontSize": "16",
+        "fontWeight": "400",
+        "fontStyle": "normal",
+        "textAlign": "center",
+        "textDecoration": "none",
+        "fontColor": "#1a1d24",
+        "fontFamily": "inherit",
+        "imageHasTitle": "",
+        "imageTitlePos": "top",
+        "imageTitleAlign": "center",
+        "textHasHeader": "",
+        "headerFontSize": "17"
+      }
     }
   ],
   "edges": [
@@ -128,9 +146,9 @@
     }
   ],
   "view": {
-    "x": 209.71716675514529,
-    "y": -99.52913337116024,
-    "scale": 1.3537520249151207
+    "x": 365.0411825996439,
+    "y": 73.38682162193777,
+    "scale": 0.9074471196619451
   },
   "snapGrid": true
 }
