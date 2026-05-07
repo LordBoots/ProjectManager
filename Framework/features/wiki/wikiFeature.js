@@ -1,10 +1,6 @@
 import { BusEvents } from '../../core/EventBus.js';
 import { showContextMenu } from '../../core/contextMenu.js';
-import {
-  resolveWikiPageIconUrl,
-  storedIconFromPickedFile,
-  wikiPageUsesBundledIcon,
-} from './wikiPageIcons.js';
+import { resolveWikiPageIconUrl, wikiPageUsesBundledIcon } from './wikiPageIcons.js';
 
 const WIKI_BLOCK_REF_SEP = '|';
 
@@ -255,24 +251,23 @@ export function createWikiFeature(ctx) {
 
   const iconPreviewWrap = document.createElement('div');
   iconPreviewWrap.className = 'pm-wiki-page-icon-preview-slot';
-  iconPreviewWrap.title = 'Page icon (bundled image or emoji)';
+  iconPreviewWrap.title = 'Page icon';
 
   const editIconBtn = document.createElement('button');
   editIconBtn.type = 'button';
   editIconBtn.className = 'pm-btn';
   editIconBtn.textContent = 'Pick icon…';
-  editIconBtn.title =
-    'Choose an image whose file name will be saved; add the matching file under src/Images/wiki-page-icons/ (shipped with the app, not copied to Data).';
+  editIconBtn.title = 'Embed an image like mind map / wiki blocks (stored in wiki data as data URL)';
 
   const clearIconBtn = document.createElement('button');
   clearIconBtn.type = 'button';
   clearIconBtn.className = 'pm-btn pm-btn-ghost';
   clearIconBtn.textContent = 'Emoji';
-  clearIconBtn.title = 'Use emoji instead of a bundled image';
+  clearIconBtn.title = 'Switch to 📄 emoji instead of a custom image';
 
   const iconFileInput = document.createElement('input');
   iconFileInput.type = 'file';
-  iconFileInput.accept = 'image/svg+xml,.svg,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp,.gif,.ico,.bmp';
+  iconFileInput.accept = 'image/*';
   iconFileInput.className = 'pm-mm-add-file-input';
   iconFileInput.tabIndex = -1;
 
@@ -301,7 +296,7 @@ export function createWikiFeature(ctx) {
             Object.assign(document.createElement('span'), {
               className: 'pm-wiki-page-icon-missing',
               textContent: '?',
-              title: 'Bundled icon file missing — add this file under src/Images/wiki-page-icons/',
+              title: 'Icon image failed to load',
             }),
           );
         },
@@ -318,21 +313,23 @@ export function createWikiFeature(ctx) {
     }
   }
 
-  function setSelectedPageBundledIconFromFile(file) {
+  function setSelectedPageIconFromFilePick(file) {
     if (!canEdit() || !selectedPageId) return;
-    const stored = storedIconFromPickedFile(file);
-    if (!stored) return;
-    ctx.store.updateWiki((w) => {
-      const pg = [...(w.pages || [])];
-      const i = pg.findIndex((x) => x.id === selectedPageId);
-      if (i < 0) return;
-      pg[i] = {
-        ...pg[i],
-        icon: stored,
-      };
-      w.pages = pg;
-    });
-    syncWikiIconChrome();
+    const fr = new FileReader();
+    fr.onload = () => {
+      const data = String(fr.result || '');
+      if (!data.startsWith('data:image')) return;
+      ctx.store.updateWiki((w) => {
+        const pg = [...(w.pages || [])];
+        const i = pg.findIndex((x) => x.id === selectedPageId);
+        if (i < 0) return;
+        pg[i] = { ...pg[i], icon: data };
+        w.pages = pg;
+      });
+      syncWikiIconChrome();
+    };
+    fr.onerror = () => {};
+    fr.readAsDataURL(file);
   }
 
   function clearBundledWikiPageIconToEmoji() {
@@ -355,7 +352,7 @@ export function createWikiFeature(ctx) {
   iconFileInput.addEventListener('change', () => {
     const f = iconFileInput.files?.[0];
     iconFileInput.value = '';
-    if (f) setSelectedPageBundledIconFromFile(f);
+    if (f) setSelectedPageIconFromFilePick(f);
   });
 
   clearIconBtn.addEventListener('click', () => clearBundledWikiPageIconToEmoji());

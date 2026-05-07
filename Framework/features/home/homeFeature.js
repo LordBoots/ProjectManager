@@ -1,8 +1,6 @@
-/** Photo tiles on Overview; resolved from this module so paths work with file:// and dev server. */
+/** Photo tiles on Overview; hero art resolves like wiki bundled icons (`../shared/assetUrls.js`). */
+import { mindMapHeroHref, kanbanHeroHref } from '../shared/assetUrls.js';
 import { resolveWikiPageIconUrl } from '../wiki/wikiPageIcons.js';
-
-const IMG_MIND_MAP = new URL('../../../src/Images/mind_map.png', import.meta.url).href;
-const IMG_KANBAN = new URL('../../../src/Images/kanban.png', import.meta.url).href;
 
 export function createHomeFeature(ctx) {
   const root = document.createElement('div');
@@ -40,13 +38,13 @@ export function createHomeFeature(ctx) {
     makeHero(
       'Mind Map',
       'mindmap',
-      IMG_MIND_MAP,
+      mindMapHeroHref(),
       'linear-gradient(145deg, rgba(90,230,220,0.3), rgba(15,17,21,0.86))',
     ),
     makeHero(
       'Kanban Board',
       'kanban',
-      IMG_KANBAN,
+      kanbanHeroHref(),
       'linear-gradient(145deg, rgba(108,140,255,0.38), rgba(15,17,21,0.88)), radial-gradient(circle at 70% 20%, rgba(255,140,220,0.22), transparent)',
     ),
   );
