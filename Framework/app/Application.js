@@ -102,6 +102,13 @@ export default class Application {
       }
     });
 
+    const offFocusInbox = bus.on(BusEvents.FOCUS_SUGGESTION_INBOX, (payload) => {
+      const id = payload && typeof payload === 'object' && typeof payload.id === 'string' ? payload.id : '';
+      if (!id) return;
+      router.setRoute('suggestions');
+      suggestions.focusInboxItem?.(id);
+    });
+
     this._cleanups = [
       () => suggestions.unmount(),
       () => home.unmount(),
@@ -110,6 +117,7 @@ export default class Application {
       () => kanban.unmount(),
       () => settings?.unmount(),
       () => offNav(),
+      () => offFocusInbox(),
       () => persistence.dispose(),
     ];
 

@@ -180,6 +180,34 @@ export function createSuggestionsFeature(ctx) {
 
   let selectedId = /** @type {string | null} */ (null);
 
+  /** Open sidebar cards (header toggles membership in this set) */
+  const asideExpandedDetailIds = /** @type {Set<string>} */ (new Set());
+
+  function cardNavigateFromSidebar(it) {
+    selectedId = it.id;
+    const refs = normalizeRefsList(it.targetRefs);
+    if (refs[0]) {
+      ctx.bus.emit(BusEvents.NAVIGATE_TO_ENTITY, refs[0]);
+    }
+    renderAll();
+  }
+
+  function focusInboxItem(id) {
+    const st = ctx.store.getState();
+    const item = (st.suggestions.items ?? []).find((x) => x.id === id);
+    if (!item) return;
+    selectedId = id;
+    if (isDev) {
+      asidePanelKind = itemKindOf(item);
+      syncKindTabs();
+    }
+    renderAll();
+    requestAnimationFrame(() => {
+      const row = mainList.querySelector(`[data-suggestion-id="${CSS.escape(id)}"]`);
+      row?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+
   function refKey(ref) {
     return `${ref.type}:${ref.id}`;
   }
@@ -203,39 +231,101 @@ export function createSuggestionsFeature(ctx) {
   }
 
   function rerenderScroller() {
+    for (const el of scroll.querySelectorAll('details.pm-card-suggestion')) {
+      const sid = el.dataset.suggestionId;
+      if (sid && /** @type {HTMLDetailsElement} */ (el).open) asideExpandedDetailIds.add(sid);
+    }
+
     const st = ctx.store.getState();
     const items = itemsForPanel(st.suggestions.items ?? []);
     scroll.replaceChildren();
 
     const maxAside = 12;
     items.slice(0, maxAside).forEach((it) => {
-      const card = document.createElement('button');
-      card.type = 'button';
+      const expanded = asideExpandedDetailIds.has(it.id);
+
+      const card = document.createElement('div');
       card.dataset.suggestionId = it.id;
+      card.dataset.sidebarOpen = expanded ? '1' : '0';
       card.className = 'pm-card-suggestion';
       if (selectedId === it.id || matchesHighlighted(it)) card.classList.add('pm-highlight');
       if (!matchesHighlighted(it) && matchesHover(it, hl.hoveredKey)) {
         card.classList.add('pm-highlight');
       }
 
-      const t = document.createElement('div');
-      t.style.fontWeight = '600';
-      t.textContent = it.title || '(untitled)';
+      const headerBtn = document.createElement('button');
+      headerBtn.type = 'button';
+      headerBtn.className = 'pm-suggest-card-header';
+      headerBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+
+      const title = document.createElement('div');
+      title.className = 'pm-suggest-card-title';
+      title.textContent = it.title || '(untitled)';
+
+      const divider = document.createElement('div');
+      divider.className = 'pm-suggest-expand-hit';
+      divider.setAttribute('aria-hidden', 'true');
 
       const meta = document.createElement('div');
-      meta.className = 'pm-muted';
-      meta.style.fontSize = '0.78rem';
+      meta.className = 'pm-suggest-card-meta';
       meta.textContent = `${it.category || ''} · ${it.priority || ''}`;
 
-      card.append(t, meta);
-      card.addEventListener('click', () => {
-        selectedId = it.id;
-        const refs = normalizeRefsList(it.targetRefs);
-        if (refs[0]) {
-          ctx.bus.emit(BusEvents.NAVIGATE_TO_ENTITY, refs[0]);
-        }
-        renderAll();
+      const dividerUnderMeta = document.createElement('div');
+      dividerUnderMeta.className = 'pm-suggest-expand-hit';
+      dividerUnderMeta.setAttribute('aria-hidden', 'true');
+
+      headerBtn.append(title, divider, meta, dividerUnderMeta);
+
+      const bodyPanel = document.createElement('div');
+      bodyPanel.className = 'pm-suggest-expand-body';
+      bodyPanel.hidden = !expanded;
+
+      const bodyHeading = document.createElement('div');
+      bodyHeading.className = 'pm-suggest-expand-body-heading';
+      bodyHeading.textContent = itemKindOf(it) === KIND_DEV_NOTE ? 'Notes' : 'Description:';
+
+      const bodyTxt = document.createElement('div');
+      bodyTxt.className = 'pm-suggest-expand-desc';
+      bodyTxt.textContent = (it.body ?? '').trim() || '(No description)';
+      bodyPanel.append(bodyHeading, bodyTxt);
+
+      const jumpBtn = document.createElement('button');
+      jumpBtn.type = 'button';
+      jumpBtn.className = 'pm-btn pm-btn-ghost pm-suggest-jump-btn';
+      jumpBtn.textContent = 'Open in inbox';
+      jumpBtn.title = 'Jump to this item in the main list to edit or remove';
+      jumpBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ctx.bus.emit(BusEvents.FOCUS_SUGGESTION_INBOX, { id: it.id });
       });
+
+      const firstRef = normalizeRefsList(it.targetRefs)[0];
+      if (firstRef) {
+        const followBtn = document.createElement('button');
+        followBtn.type = 'button';
+        followBtn.className = 'pm-btn pm-btn-ghost pm-suggest-follow-btn';
+        followBtn.textContent = 'Open linked item';
+        followBtn.title = 'Go to the linked mind map / Kanban card / wiki page';
+        followBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          cardNavigateFromSidebar(it);
+        });
+        bodyPanel.appendChild(followBtn);
+      }
+      bodyPanel.appendChild(jumpBtn);
+
+      headerBtn.addEventListener('click', () => {
+        if (asideExpandedDetailIds.has(it.id)) asideExpandedDetailIds.delete(it.id);
+        else asideExpandedDetailIds.add(it.id);
+        rerenderScroller();
+      });
+
+      card.append(headerBtn, bodyPanel);
+
+      card.title = firstRef
+        ? 'Use the header strip to show details. Buttons open inbox or linked item.'
+        : 'Use the header strip to show details. Open in inbox to edit.';
+
       scroll.appendChild(card);
     });
 
@@ -519,7 +609,14 @@ export function createSuggestionsFeature(ctx) {
 
   addBtnAside.addEventListener('click', () => openEditor(null, [], isDev ? asidePanelKind : KIND_SUGGESTION));
 
-  const unsubStore = ctx.store.subscribe(renderAll);
+  /** Mind map / kanban / wiki updates replace `state` often; `suggestions` keeps the same reference until that slice changes. Rebuilding the aside on every notify() replaced the DOM every frame during drags and swallowed clicks. */
+  let lastSuggestionsSlice = /** @type {object | null} */ (null);
+  const unsubStore = ctx.store.subscribe((st) => {
+    const s = st.suggestions;
+    if (lastSuggestionsSlice !== null && s === lastSuggestionsSlice) return;
+    lastSuggestionsSlice = s;
+    renderAll();
+  });
 
   const unsubHover = ctx.bus.on(BusEvents.ENTITY_HOVER, (payload) => {
     if (!payload || typeof payload !== 'object') return;
@@ -564,6 +661,8 @@ export function createSuggestionsFeature(ctx) {
     mainRoot,
 
     renderAll,
+
+    focusInboxItem,
 
     mount() {
       syncKindTabs();
