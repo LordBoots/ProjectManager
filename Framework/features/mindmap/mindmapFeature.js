@@ -67,6 +67,29 @@ function isNote(n) {
 function isWikiLink(n) {
   return String(n.type) === "wikiLink";
 }
+/** paintShell uses 14px top border when topBand is set; other sides stay 2px — border-box shrinks wiki body by this amount without extra outer height. */
+const WIKI_TOP_BAND_EXTRA_H = 14 - 2;
+function defaultNodeW(n) {
+  return isWikiLink(n) ? WIKI_LINK_NODE_W : 140;
+}
+function defaultNodeH(n) {
+  return isWikiLink(n) ? WIKI_LINK_NODE_H : 80;
+}
+function storedNodeW(n) {
+  return +n.w || defaultNodeW(n);
+}
+function storedNodeH(n) {
+  return +n.h || defaultNodeH(n);
+}
+function wikiTopBandExtraH(n) {
+  return isWikiLink(n) && stylesOf(n).topBand ? WIKI_TOP_BAND_EXTRA_H : 0;
+}
+function renderedNodeW(n) {
+  return storedNodeW(n);
+}
+function renderedNodeH(n) {
+  return storedNodeH(n) + wikiTopBandExtraH(n);
+}
 /** Notes and wiki link nodes never participate in graph edges. */
 function rejectsMindmapEdges(n) {
   return isNote(n) || isWikiLink(n);
@@ -92,8 +115,8 @@ function paintShell(el, n) {
 }
 
 function nodeCenter(n) {
-  const w = +n.w || 140,
-    h = +n.h || 80;
+  const w = renderedNodeW(n),
+    h = renderedNodeH(n);
   return { x: +n.x + w / 2, y: +n.y + h / 2 };
 }
 
@@ -116,8 +139,8 @@ function hullOfMemberIds(mids, nm) {
     const n = nm.get(id);
     if (!n) continue;
     any = true;
-    const w = +n.w || 140,
-      h = +n.h || 80;
+    const w = renderedNodeW(n),
+      h = renderedNodeH(n);
     x0 = Math.min(x0, +n.x);
     y0 = Math.min(y0, +n.y);
     x1 = Math.max(x1, +n.x + w);
@@ -267,8 +290,8 @@ export function createMindmapFeature(ctx) {
     for (let i = nodes.length - 1; i >= 0; i--) {
       const n = nodes[i];
       if (n.id === excludeId) continue;
-      const ww = +n.w || 140,
-        hh = +n.h || 80;
+      const ww = renderedNodeW(n),
+        hh = renderedNodeH(n);
       if (px >= +n.x && px <= +n.x + ww && py >= +n.y && py <= +n.y + hh) return n;
     }
     return null;
@@ -777,8 +800,8 @@ export function createMindmapFeature(ctx) {
     for (const n of list) {
       x0 = Math.min(x0, +n.x);
       y0 = Math.min(y0, +n.y);
-      x1 = Math.max(x1, +n.x + (+n.w || 140));
-      y1 = Math.max(y1, +n.y + (+n.h || 80));
+      x1 = Math.max(x1, +n.x + renderedNodeW(n));
+      y1 = Math.max(y1, +n.y + renderedNodeH(n));
     }
     const tcx = (x0 + x1) / 2,
       tcy = (y0 + y1) / 2,
@@ -942,8 +965,8 @@ export function createMindmapFeature(ctx) {
       if (!n) continue;
       x0 = Math.min(x0, +n.x);
       y0 = Math.min(y0, +n.y);
-      x1 = Math.max(x1, +n.x + (+n.w || 140));
-      y1 = Math.max(y1, +n.y + (+n.h || 80));
+      x1 = Math.max(x1, +n.x + renderedNodeW(n));
+      y1 = Math.max(y1, +n.y + renderedNodeH(n));
     }
     if (x0 === Infinity) return;
     const SF = snapFn();
@@ -1272,8 +1295,8 @@ export function createMindmapFeature(ctx) {
         (isWikiLink(n) ? " pm-mm-node-wikilink" : "");
       pad.style.left = +n.x + "px";
       pad.style.top = +n.y + "px";
-      pad.style.width = (+n.w || 140) + "px";
-      pad.style.height = (+n.h || 80) + "px";
+      pad.style.width = storedNodeW(n) + "px";
+      pad.style.height = renderedNodeH(n) + "px";
       pad.style.display = "flex";
       pad.style.flexDirection = "column";
       paintShell(pad, n);
@@ -1975,8 +1998,8 @@ export function createMindmapFeature(ctx) {
       selFrames.clear();
       sel.clear();
       sel.add(id);
-      const cx = +n.x + (+n.w || 140) / 2,
-        cy = +n.y + (+n.h || 80) / 2,
+      const cx = +n.x + renderedNodeW(n) / 2,
+        cy = +n.y + renderedNodeH(n) / 2,
         r = shell.getBoundingClientRect();
       vx = r.width / 2 - cx * sc;
       vy = r.height / 2 - cy * sc;
