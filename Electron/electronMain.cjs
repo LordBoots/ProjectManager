@@ -1,4 +1,4 @@
-// Electron main process for GDD Viewer
+// Electron main process
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 

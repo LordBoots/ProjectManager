@@ -2,8 +2,7 @@
   "watch": [
     "index.html",
     "Electron/",
-    "Framework/",
-    "Documentation/"
+    "Framework/"
   ],
   "ext": "js,html,css,json,md",
   "ignore": [

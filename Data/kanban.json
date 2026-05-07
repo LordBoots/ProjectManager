@@ -1,0 +1,33 @@
+{
+  "columns": [
+    {
+      "id": "c-todo",
+      "title": "Todo",
+      "cards": [
+        {
+          "id": "k-9z3agw",
+          "title": "Card",
+          "icon": "⚙",
+          "description": "",
+          "subtasks": [
+            {
+              "id": "s1",
+              "label": "Task",
+              "done": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c-doing",
+      "title": "Doing",
+      "cards": []
+    },
+    {
+      "id": "c-done",
+      "title": "Done",
+      "cards": []
+    }
+  ]
+}

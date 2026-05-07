@@ -1,0 +1,20 @@
+{
+  "pages": [
+    {
+      "id": "p-intro",
+      "title": "Introduction",
+      "description": "# Dynasty Arena This is the first test page in the wiki section",
+      "icon": "📄"
+    },
+    {
+      "id": "p-wesru1",
+      "title": "New page",
+      "description": "# New page",
+      "icon": "📄"
+    }
+  ],
+  "markdownByPageId": {
+    "p-intro": "# Dynasty Arena\nThis is the first test page in the wiki section\n",
+    "p-wesru1": "# New page\n"
+  }
+}

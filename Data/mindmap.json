@@ -1,0 +1,47 @@
+{
+  "nodes": [
+    {
+      "id": "n-7w06co",
+      "type": "text",
+      "text": "Node",
+      "x": 304,
+      "y": 96,
+      "w": 160,
+      "h": 90,
+      "styles": {
+        "bg": "#ffffff",
+        "borderColor": "#5c7fbc",
+        "topBand": "#b66420",
+        "shadow": "1",
+        "radius": "12",
+        "fontSize": "16",
+        "fontWeight": "400",
+        "fontStyle": "normal",
+        "textAlign": "left",
+        "textDecoration": "none",
+        "fontColor": "#1a1d24",
+        "fontFamily": "inherit",
+        "imageHasTitle": "",
+        "imageTitlePos": "top",
+        "imageTitleAlign": "center"
+      }
+    },
+    {
+      "id": "n-shgx5w",
+      "type": "note",
+      "text": "Note",
+      "x": 576,
+      "y": 96,
+      "w": 96,
+      "h": 44,
+      "styles": {}
+    }
+  ],
+  "edges": [],
+  "view": {
+    "x": 212.5474938460036,
+    "y": 482.98325116354715,
+    "scale": 0.998613251094238
+  },
+  "snapGrid": true
+}

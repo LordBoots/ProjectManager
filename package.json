@@ -1,9 +1,9 @@
 {
-  "name": "gdd-viewer",
+  "name": "project-manager",
   "version": "1.0.0",
   "main": "Electron/electronMain.cjs",
   "type": "module",
-  "description": "Game Design Document Viewer - A markdown-based viewer for sharing GDDs with non-technical stakeholders",
+  "description": "Electron shell for the Project Manager web application",
   "scripts": {
     "start": "electron .",
     "dev": "set NODE_ENV=development && electron .",
@@ -11,21 +11,19 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "gdd",
-    "game-design",
-    "markdown",
-    "viewer",
-    "electron"
+    "electron",
+    "project-manager"
   ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^33.2.1",
+    "electron": "^42.0.0",
     "electron-reloader": "^1.2.3",
     "nodemon": "^3.1.10"
   },
   "dependencies": {
     "electron-packager": "^17.1.2",
-    "electron-window-state": "^5.0.3"
+    "electron-window-state": "^5.0.3",
+    "peerjs": "^1.5.5"
   }
 }

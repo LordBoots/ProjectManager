@@ -1,9 +1,8 @@
-// Preload script - exposes Node.js APIs to the renderer process
+// Preload script - exposes Node.js helpers to the renderer process
 const fs = require('fs');
 const path = require('path');
 
-// Expose file system APIs for reading/writing markdown and JSON files
-// Since contextIsolation is false, we can directly attach to window
+// Since contextIsolation is false, attach directly to window
 window.electronAPI = {
   // File system operations
   readFile: (filePath) => {
@@ -56,7 +55,7 @@ window.electronAPI = {
     return path.join(__dirname, '..');
   },
 
-  // JSON operations (convenience methods)
+  // JSON helpers
   readJSON: (filePath) => {
     try {
       const data = fs.readFileSync(filePath, 'utf8');
