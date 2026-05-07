@@ -32,7 +32,7 @@ export function createLayout({ developer, onSyncClick }) {
   const syncBtn = document.createElement('button');
   syncBtn.type = 'button';
   syncBtn.className = 'pm-sync-btn';
-  syncBtn.title = 'Compare remote version.json snapshot id to local (updates on every save)';
+  syncBtn.title = 'Compare snapshot to GitHub; if different, download remote Data JSON and reload';
   syncBtn.textContent = 'Sync data';
   if (onSyncClick) {
     syncBtn.addEventListener('click', () => onSyncClick());

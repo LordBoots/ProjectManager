@@ -1,4 +1,6 @@
 /** Photo tiles on Overview; resolved from this module so paths work with file:// and dev server. */
+import { resolveWikiPageIconUrl } from '../wiki/wikiPageIcons.js';
+
 const IMG_MIND_MAP = new URL('../../../src/Images/mind_map.png', import.meta.url).href;
 const IMG_KANBAN = new URL('../../../src/Images/kanban.png', import.meta.url).href;
 
@@ -58,20 +60,46 @@ export function createHomeFeature(ctx) {
     const pages = Array.isArray(wiki.pages) ? wiki.pages : [];
     for (const p of pages) {
       const c = document.createElement('article');
-      c.className = 'pm-wiki-card';
-      const icon = document.createElement('span');
-      icon.className = 'pm-wiki-icon';
-      icon.textContent = p.icon || '📄';
+      c.className = 'pm-wiki-card pm-home-wiki-tile';
 
-      const col = document.createElement('div');
-      const pt = document.createElement('strong');
-      pt.textContent = p.title;
-      const sub = document.createElement('div');
-      sub.className = 'pm-muted';
-      sub.textContent = p.description || '';
+      const ic = typeof p.icon === 'string' ? p.icon.trim() : '';
+      const url = resolveWikiPageIconUrl(ic);
+      /** @type {HTMLElement} */
+      let iconSlot;
+      if (url) {
+        const img = document.createElement('img');
+        img.className = 'pm-wiki-icon-img';
+        img.src = url;
+        img.alt = '';
+        img.addEventListener(
+          'error',
+          () => {
+            img.replaceWith(
+              Object.assign(document.createElement('span'), {
+                className: 'pm-wiki-icon pm-home-wiki-tile-icon-emoji',
+                textContent: '📄',
+              }),
+            );
+          },
+          { once: true },
+        );
+        iconSlot = img;
+      } else {
+        iconSlot = Object.assign(document.createElement('span'), {
+          className: 'pm-wiki-icon pm-home-wiki-tile-icon-emoji',
+          textContent: ic || '📄',
+        });
+      }
 
-      col.append(pt, sub);
-      c.append(icon, col);
+      const iconWrap = document.createElement('div');
+      iconWrap.className = 'pm-home-wiki-tile-icon';
+      iconWrap.appendChild(iconSlot);
+
+      const name = document.createElement('div');
+      name.className = 'pm-home-wiki-tile-title';
+      name.textContent = p.title;
+
+      c.append(iconWrap, name);
       c.addEventListener('click', () => ctx.router.setRoute(`wiki:${p.id}`));
       wikiGrid.appendChild(c);
     }

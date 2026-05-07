@@ -18,17 +18,26 @@ import { newDataUid } from '../../sync/dataUid.js';
 
 /** @typedef {{ id: string, title: string, description?: string, icon?: string }} WikiPageMeta */
 
-/** @typedef {{ pages: WikiPageMeta[], markdownByPageId?: Record<string, string> }} WikiData */
+/**
+ * @typedef {{ id: string, type: 'text', content: string }} WikiBlockText
+ * @typedef {{ id: string, type: 'image', src: string, alt?: string }} WikiBlockImage
+ * @typedef {{ id: string, cells: string[] }} WikiTableRow
+ * @typedef {{ id: string, type: 'table', rows: WikiTableRow[] }} WikiBlockTable
+ * @typedef {{ id: string, type: 'separator' }} WikiBlockSeparator
+ * @typedef {WikiBlockText|WikiBlockImage|WikiBlockTable|WikiBlockSeparator} WikiBlock
+ */
+
+/** @typedef {{ pages: WikiPageMeta[], markdownByPageId?: Record<string, string>, blocksByPageId?: Record<string, WikiBlock[]> }} WikiData */
 
 /**
  * @typedef {{ id: string, title: string, body: string, category: string, priority: string, status: string, rejectionReason?: string, targetRefs?: EntityRef[], kind?: 'suggestion'|'devNote', createdAt?: string, updatedAt?: string }} SuggestionItem
  */
 
 /**
- * @typedef {{ type: 'mindmapNode'|'kanbanCard'|'wikiPage', id: string }} EntityRef
+ * @typedef {{ type: 'mindmapNode'|'kanbanCard'|'wikiPage'|'wikiBlock'|'wikiTableRow', id: string }} EntityRef
  */
 
-/** @typedef {{ remoteRepoHint?: string }} AppSettings */
+/** @typedef {{ remoteRepoHint?: string, remoteGithubBranch?: string }} AppSettings */
 
 export function defaultVersionFile() {
   /** @type {VersionFile} */
@@ -74,12 +83,13 @@ export function defaultWiki() {
       {
         id: 'p-intro',
         title: 'Introduction',
-        description: 'Project overview',
+        description: '',
         icon: '📄',
       },
     ],
-    markdownByPageId: {
-      'p-intro': '# Introduction\n\nWrite your overview here.',
+    markdownByPageId: {},
+    blocksByPageId: {
+      'p-intro': [],
     },
   };
 }
@@ -95,5 +105,6 @@ export function defaultSettings() {
   /** @type {AppSettings} */
   return {
     remoteRepoHint: '',
+    remoteGithubBranch: '',
   };
 }

@@ -9,7 +9,7 @@ export function createSettingsFeature(ctx) {
   hint.className = 'pm-muted';
   hint.style.maxWidth = '520px';
   hint.textContent =
-    'Optional GitHub repo root for remote snapshot check (raw.githubusercontent.com · main branch). version.json carries a rotating uid whenever data is saved; Sync compares ids without bumping yours. Merge via git then press Sync to reload from disk.';
+    'GitHub repo + branch used for Sync. Snapshot id comes from Data/version.json. If GitHub differs, Sync replaces all local Data JSON from raw.githubusercontent.com (branch default main), then restores this repo URL/branch above. Uses cache-busting on each fetch.';
 
   const lbl = document.createElement('div');
   lbl.className = 'pm-label';
@@ -21,18 +21,38 @@ export function createSettingsFeature(ctx) {
 
   input.value = ctx.store.getState().settings?.remoteRepoHint || '';
 
+  const lblBr = document.createElement('div');
+  lblBr.className = 'pm-label';
+  lblBr.textContent = 'Git branch for raw files';
+
+  const branchInput = document.createElement('input');
+  branchInput.className = 'pm-input';
+  branchInput.placeholder = 'main';
+  branchInput.value = ctx.store.getState().settings?.remoteGithubBranch || '';
+
   let tid = null;
-  input.addEventListener('input', () => {
+  function debounceSettings(mut) {
     clearTimeout(tid);
     tid = setTimeout(() => {
-      const v = input.value.trim();
-      ctx.store.updateSettings((s) => {
-        s.remoteRepoHint = v;
-      });
+      ctx.store.updateSettings(mut);
     }, 300);
+  }
+
+  input.addEventListener('input', () => {
+    const v = input.value.trim();
+    debounceSettings((s) => {
+      s.remoteRepoHint = v;
+    });
   });
 
-  root.append(title, hint, lbl, input);
+  branchInput.addEventListener('input', () => {
+    const v = branchInput.value.trim();
+    debounceSettings((s) => {
+      s.remoteGithubBranch = v;
+    });
+  });
+
+  root.append(title, hint, lbl, input, lblBr, branchInput);
 
   return {
     root,

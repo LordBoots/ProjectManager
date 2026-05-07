@@ -1,22 +1,66 @@
+import { FILES } from '../data/repositories/projectRepository.js';
+
 /**
- * Lightweight "manifest" comparison for optional manual sync from a repo URL hint.
- * Fetches `{ dataFolderUrl, versionUrl }`-style guesses from user-provided repo root string.
+ * GitHub raw: parse repo URL hint, compare `Data/version.json` snapshot ids, optionally pull full `Data/`.
  */
 
-/** GitHub raw URLs are case-sensitive; this project uses `Data/` on the repo. */
-function guessRawGithubUrls(repoRootUrl) {
+function sanitizeGithubBranch(/** @type {unknown} */ branch) {
+  const t = typeof branch === 'string' ? branch.trim() : '';
+  if (!t) return 'main';
+  if (!/^[a-zA-Z0-9/_.-]+$/.test(t)) return 'main';
+  return t;
+}
+
+function guessRawGithubUrls(repoRootUrl, githubBranchName) {
   const u = repoRootUrl.trim().replace(/\/$/, '');
   if (!u) return null;
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/i.exec(u);
   if (!m) return null;
   const owner = m[1];
   const repo = m[2];
-  const branch = 'main';
+  const branch = sanitizeGithubBranch(githubBranchName);
   const base = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}`;
   return {
     versionUrl: `${base}/Data/version.json`,
     dataRoot: `${base}/Data`,
   };
+}
+
+/** Bypass stale CDN/browser cache on branch-linked raw URLs (GitHub caches aggressively). */
+function cacheBustRawUrl(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}_cb=${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/**
+ * Fetch every `Data/*.json` from raw GitHub and write into local `Data/`.
+ * Validates JSON for each file before writing any of them.
+ * @param {ReturnType<typeof import('../platform/electronFs.js').createFsAdapter>} fs
+ * @param {string} dataRoot e.g. `https://raw.githubusercontent.com/o/r/main/Data`
+ */
+export async function replaceLocalDataFromGithubRaw(fs, dataRoot) {
+  const base = String(dataRoot).replace(/\/$/, '');
+  const names = /** @type {string[]} */ (Object.values(FILES));
+
+  /** @type {Record<string, unknown>} */
+  const blobs = {};
+  for (const name of names) {
+    const url = cacheBustRawUrl(`${base}/${name}`);
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Fetch ${name} failed (${res.status})`);
+    const txt = await res.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(txt);
+    } catch {
+      throw new Error(`Remote ${name} is not valid JSON`);
+    }
+    if (!parsed || typeof parsed !== 'object') throw new Error(`Remote ${name} must be a JSON object`);
+    blobs[name] = parsed;
+  }
+  for (const name of names) {
+    fs.writeJSON(fs.dataPath(name), blobs[name]);
+  }
 }
 
 /** Must match LEGACY_SEMVER_UID_PREFIX in projectRepository.loadVersionJson. */
@@ -36,25 +80,10 @@ function parseSnapshotIdFromVersionJson(j) {
   throw new Error('Invalid version.json (expected uid or legacy version)');
 }
 
-/** @param {string} id */
-function legacySemverValue(id) {
-  if (typeof id !== 'string' || !id.startsWith(LEGACY_SEMVER_UID_PREFIX)) return null;
-  const v = id.slice(LEGACY_SEMVER_UID_PREFIX.length);
-  return v.length ? v : null;
-}
-
-/** Human-readable snippet for sync status text. */
-function formatSnapForUi(id) {
-  const sem = legacySemverValue(id);
-  if (sem) return `semver:${sem}`;
-  if (typeof id !== 'string' || !id.length) return '(missing)';
-  if (id.length <= 12) return id;
-  return `${id.slice(0, 8)}…`;
-}
-
-export async function fetchRemoteVersion(versionUrl) {
-  const res = await fetch(versionUrl, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Version fetch failed: ${res.status}`);
+export async function fetchRemoteSnapshotId(versionUrl) {
+  const url = cacheBustRawUrl(versionUrl);
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Snapshot fetch failed: ${res.status}`);
   try {
     const j = await res.json();
     return parseSnapshotIdFromVersionJson(j);
@@ -63,30 +92,15 @@ export async function fetchRemoteVersion(versionUrl) {
   }
 }
 
-export function buildSyncHintMessage(localSnapshotId, remoteSnapshotId) {
-  if (localSnapshotId === remoteSnapshotId) {
-    return `Remote snapshot matches local (${formatSnapForUi(remoteSnapshotId)}).`;
-  }
+/** @deprecated use fetchRemoteSnapshotId */
+export const fetchRemoteVersion = fetchRemoteSnapshotId;
 
-  const rSem = legacySemverValue(remoteSnapshotId);
-  const lSem = legacySemverValue(localSnapshotId);
-  const a = formatSnapForUi(remoteSnapshotId);
-  const b = formatSnapForUi(localSnapshotId);
-
-  if (rSem !== null && lSem === null) {
-    return `Snapshots differ (remote semver:${rSem}, local uid ${b}). GitHub version.json still uses "version"; commit and push your local Data/version.json (uid field) to match the new snapshot format.`;
-  }
-  if (lSem !== null && rSem === null) {
-    return `Snapshots differ (remote uid ${a}, local semver:${lSem}). Pull or merge upstream Data/version.json, then Sync to reload from disk.`;
-  }
-
-  return `Snapshots differ (${a} vs ${b}). Merge Data via git, then Sync to reload from disk.`;
-}
 export function describeGitDataReplace() {
-  return 'Download the repo `Data` folder and replace your local data directory, then press Sync to reload from disk. Snapshot ids live in version.json.';
+  return 'Compare `Data/version.json` ids with GitHub; if they differ Sync downloads the remote `Data` JSON files and reloads.';
 }
 
 export function parseRepoHint(settings) {
   const hint = settings?.remoteRepoHint?.trim() || '';
-  return guessRawGithubUrls(hint);
+  const branch = settings?.remoteGithubBranch ?? '';
+  return guessRawGithubUrls(hint, branch);
 }

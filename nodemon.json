@@ -9,7 +9,8 @@
     "node_modules/",
     "*.log",
     "build/",
-    "dist/"
+    "dist/",
+    "Data/"
   ],
   "env": {
     "NODE_ENV": "development"

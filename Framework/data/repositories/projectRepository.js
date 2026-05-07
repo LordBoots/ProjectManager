@@ -89,15 +89,122 @@ export function loadKanbanJson(raw) {
   };
 }
 
+function newWikiBlockId() {
+  return `b-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function newWikiTableRowId() {
+  return `br-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** @param {unknown} raw */
+function coerceWikiTableRow(raw) {
+  if (Array.isArray(raw)) {
+    return { id: newWikiTableRowId(), cells: raw.map((c) => String(c ?? '')) };
+  }
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    !Array.isArray(raw) &&
+    Array.isArray(/** @type {{cells?:unknown}} */ (raw).cells)
+  ) {
+    const rid =
+      typeof /** @type {{id?:unknown}} */ (raw).id === 'string' && String(raw.id).trim()
+        ? String(raw.id).trim()
+        : newWikiTableRowId();
+    return {
+      id: rid,
+      cells: /** @type {{cells:unknown[]}} */ (raw).cells.map((c) => String(c ?? '')),
+    };
+  }
+  return null;
+}
+
+/** @param {unknown} raw */
+function coerceWikiBlock(raw) {
+  if (!raw || typeof raw !== 'object' || typeof raw.type !== 'string') return null;
+  const bid =
+    typeof raw.id === 'string' && raw.id.trim().length > 0 ? raw.id.trim() : newWikiBlockId();
+  if (/** @type {{ type?: string }} */ (raw).type === 'text') {
+    return {
+      id: bid,
+      type: /** @type {'text'} */ ('text'),
+      content: typeof /** @type {{ content?: unknown }} */ (raw).content === 'string' ? raw.content : '',
+    };
+  }
+  if (/** @type {{ type?: string }} */ (raw).type === 'image') {
+    return {
+      id: bid,
+      type: /** @type {'image'} */ ('image'),
+      src: typeof /** @type {{ src?: unknown }} */ (raw).src === 'string' ? raw.src : '',
+      alt: typeof /** @type {{ alt?: unknown }} */ (raw).alt === 'string' ? raw.alt : '',
+    };
+  }
+  if (/** @type {{ type?: string }} */ (raw).type === 'table') {
+    const rr = /** @type {{ rows?: unknown }} */ (raw).rows;
+    const rowObjs =
+      Array.isArray(rr) && rr.length > 0
+        ? /** @type {NonNullable<ReturnType<typeof coerceWikiTableRow>>[]} */ (
+            rr.map(coerceWikiTableRow).filter((x) => x !== null)
+          )
+        : [];
+    const mkEmptyRow = () => ({ id: newWikiTableRowId(), cells: ['', '', ''] });
+    const safe = rowObjs.length > 0 ? rowObjs : [mkEmptyRow(), mkEmptyRow(), mkEmptyRow()];
+    return {
+      id: bid,
+      type: /** @type {'table'} */ ('table'),
+      rows: safe,
+    };
+  }
+  if (/** @type {{ type?: string }} */ (raw).type === 'separator') {
+    return { id: bid, type: /** @type {'separator'} */ ('separator') };
+  }
+  return null;
+}
+
+export function normalizeWikiBlockList(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  /** @type {NonNullable<ReturnType<typeof coerceWikiBlock>>[]} */
+  const out = [];
+  for (const x of list) {
+    const b = coerceWikiBlock(x);
+    if (b) out.push(b);
+  }
+  return out;
+}
+
 export function loadWikiJson(raw) {
   const d = defaultWiki();
   if (!raw || typeof raw !== 'object') return d;
+  const pages = Array.isArray(raw.pages) ? raw.pages : d.pages;
+  const markdownByPageId =
+    raw.markdownByPageId && typeof raw.markdownByPageId === 'object'
+      ? raw.markdownByPageId
+      : d.markdownByPageId;
+
+  const rawBlocks = raw.blocksByPageId && typeof raw.blocksByPageId === 'object' ? raw.blocksByPageId : {};
+
+  /** @type {Record<string, ReturnType<typeof normalizeWikiBlockList>>} */
+  const blocksByPageId = {};
+  for (const p of pages) {
+    const id = p.id;
+    let list = normalizeWikiBlockList(Array.isArray(rawBlocks[id]) ? rawBlocks[id] : []);
+    if (list.length === 0 && markdownByPageId[id] && String(markdownByPageId[id]).trim()) {
+      list = [
+        {
+          id: newWikiBlockId(),
+          type: 'text',
+          content: String(markdownByPageId[id]),
+        },
+      ];
+    }
+    blocksByPageId[id] = list;
+  }
+
   return {
-    pages: Array.isArray(raw.pages) ? raw.pages : d.pages,
-    markdownByPageId:
-      raw.markdownByPageId && typeof raw.markdownByPageId === 'object'
-        ? raw.markdownByPageId
-        : d.markdownByPageId,
+    pages,
+    markdownByPageId,
+    blocksByPageId,
   };
 }
 

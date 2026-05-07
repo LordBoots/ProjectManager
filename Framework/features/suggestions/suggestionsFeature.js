@@ -5,6 +5,71 @@ const PRIORITIES = ['Low', 'Medium', 'High'];
 const KIND_SUGGESTION = 'suggestion';
 const KIND_DEV_NOTE = 'devNote';
 
+/** @param {unknown} raw */
+function prioritySlug(raw) {
+  const s = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  if (s === 'low') return 'low';
+  if (s === 'high') return 'high';
+  if (s === 'medium') return 'medium';
+  return 'other';
+}
+
+/**
+ * @param {string} label
+ * @param {unknown} rawForSlug
+ */
+function priorityPillEl(label, rawForSlug) {
+  const span = document.createElement('span');
+  span.className = `pm-suggest-priority pm-suggest-priority--${prioritySlug(rawForSlug ?? label)}`;
+  span.textContent = label.trim() || '?';
+  return span;
+}
+
+/**
+ * Sidebar card meta row: category (plain) · priority pill.
+ * @param {HTMLElement} metaEl
+ * @param {string | undefined} category
+ * @param {string | undefined} priority
+ */
+function renderAsidePriorityMeta(metaEl, category, priority) {
+  metaEl.replaceChildren();
+  const cat = String(category ?? '').trim();
+  const pri = String(priority ?? '').trim();
+  if (!cat && !pri) return;
+  if (cat && pri) {
+    metaEl.append(cat, document.createTextNode(' · '), priorityPillEl(pri, priority));
+    return;
+  }
+  if (cat) metaEl.appendChild(document.createTextNode(cat));
+  else metaEl.appendChild(priorityPillEl(pri, priority));
+}
+
+/**
+ * Inbox subtitle: category · priority pill · status
+ * @param {HTMLElement} subEl
+ * @param {string | undefined} category
+ * @param {string | undefined} priority
+ * @param {string | undefined} status
+ */
+function renderInboxSubtitle(subEl, category, priority, status) {
+  subEl.replaceChildren();
+  const cat = String(category ?? '').trim();
+  const pri = String(priority ?? '').trim();
+  const stat = String(status ?? '').trim();
+
+  const factories = [];
+  if (cat) factories.push(() => document.createTextNode(cat));
+  if (pri) factories.push(() => priorityPillEl(pri, priority));
+  if (stat) factories.push(() => document.createTextNode(stat));
+
+  for (let i = 0; i < factories.length; i++) {
+    if (i > 0) subEl.appendChild(document.createTextNode(' · '));
+    subEl.appendChild(factories[i]());
+  }
+}
+
 function uid() {
   return `sg-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
@@ -23,7 +88,7 @@ export function normalizeRefsList(refs) {
     const t = typeof item.type === 'string' ? item.type : '';
     const id = typeof item.id === 'string' ? item.id : '';
     if (!id) continue;
-    if (t === 'mindmapNode' || t === 'kanbanCard' || t === 'wikiPage') {
+    if (t === 'mindmapNode' || t === 'kanbanCard' || t === 'wikiPage' || t === 'wikiBlock' || t === 'wikiTableRow') {
       out.push({ type: t, id });
     }
   }
@@ -268,7 +333,7 @@ export function createSuggestionsFeature(ctx) {
 
       const meta = document.createElement('div');
       meta.className = 'pm-suggest-card-meta';
-      meta.textContent = `${it.category || ''} · ${it.priority || ''}`;
+      renderAsidePriorityMeta(meta, it.category, it.priority);
 
       const dividerUnderMeta = document.createElement('div');
       dividerUnderMeta.className = 'pm-suggest-expand-hit';
@@ -305,7 +370,8 @@ export function createSuggestionsFeature(ctx) {
         followBtn.type = 'button';
         followBtn.className = 'pm-btn pm-btn-ghost pm-suggest-follow-btn';
         followBtn.textContent = 'Open linked item';
-        followBtn.title = 'Go to the linked mind map / Kanban card / wiki page';
+        followBtn.title =
+          'Go to the linked mind map item, Kanban card, wiki page, wiki block, or table row';
         followBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           cardNavigateFromSidebar(it);
@@ -361,8 +427,8 @@ export function createSuggestionsFeature(ctx) {
       const title = document.createElement('strong');
       title.textContent = it.title;
       const sub = document.createElement('div');
-      sub.className = 'pm-muted';
-      sub.textContent = `${it.category} · ${it.priority} · ${it.status}`;
+      sub.className = 'pm-muted pm-suggestions-inbox-meta';
+      renderInboxSubtitle(sub, it.category, it.priority, it.status);
       left.append(title, sub);
 
       const actions = document.createElement('div');

@@ -7,11 +7,15 @@ import { createFsAdapter } from '../platform/electronFs.js';
 import { loadAllProjectData } from '../data/repositories/projectRepository.js';
 import { createProjectStore } from '../data/store/ProjectStore.js';
 import { createPersistence } from '../sync/localDataPersistence.js';
-import { fetchRemoteVersion, parseRepoHint, buildSyncHintMessage } from '../sync/remoteManifestSync.js';
+import {
+  fetchRemoteSnapshotId,
+  parseRepoHint,
+  replaceLocalDataFromGithubRaw,
+} from '../sync/remoteManifestSync.js';
 import { createHomeFeature } from '../features/home/homeFeature.js';
 import { createMindmapFeature } from '../features/mindmap/mindmapFeature.js';
 import { createKanbanFeature } from '../features/kanban/kanbanFeature.js';
-import { createWikiFeature } from '../features/wiki/wikiFeature.js';
+import { createWikiFeature, parseWikiBlockRefCompound, parseWikiTableRowRefCompound } from '../features/wiki/wikiFeature.js';
 import { createSuggestionsFeature } from '../features/suggestions/suggestionsFeature.js';
 import { createSettingsFeature } from '../features/settings/settingsFeature.js';
 
@@ -54,7 +58,7 @@ export default class Application {
     const layout = createLayout({
       developer: config.developer,
       onSyncClick: async () => {
-        await this._runSync(store, persistence, layout);
+        await this._runSync(fs, store, persistence, layout);
       },
     });
 
@@ -91,6 +95,20 @@ export default class Application {
 
     const offNav = bus.on(BusEvents.NAVIGATE_TO_ENTITY, (ref) => {
       if (!ref?.type || !ref?.id) return;
+      if (ref.type === 'wikiTableRow' && typeof ref.id === 'string') {
+        const parsed = parseWikiTableRowRefCompound(ref.id);
+        if (!parsed) return;
+        router.setRoute(`wiki:${parsed.pageId}`);
+        queueMicrotask(() => wiki.focusLinkedTableRow?.(ref.id));
+        return;
+      }
+      if (ref.type === 'wikiBlock' && typeof ref.id === 'string') {
+        const parsed = parseWikiBlockRefCompound(ref.id);
+        if (!parsed) return;
+        router.setRoute(`wiki:${parsed.pageId}`);
+        queueMicrotask(() => wiki.focusLinkedBlock?.(ref.id));
+        return;
+      }
       if (ref.type === 'wikiPage') router.setRoute(`wiki:${ref.id}`);
       if (ref.type === 'kanbanCard') {
         router.setRoute('kanban');
@@ -126,27 +144,48 @@ export default class Application {
   }
 
   /**
+   * @param {ReturnType<typeof createFsAdapter>} fs
    * @param {ReturnType<typeof createProjectStore>} store
    * @param {ReturnType<typeof createPersistence>} persistence
    * @param {ReturnType<typeof createLayout>} layout
    */
-  async _runSync(store, persistence, layout) {
+  async _runSync(fs, store, persistence, layout) {
     layout.syncStatus.textContent = '';
     persistence.saveImmediate({ skipUidBump: true });
+
+    const syncedRepoHint = store.getState().settings?.remoteRepoHint ?? '';
+    const syncedGhBranch = store.getState().settings?.remoteGithubBranch ?? '';
+
     const parsed = parseRepoHint(store.getState().settings);
     if (!parsed) {
-      layout.syncStatus.textContent = 'Set repository URL in Settings for remote version check.';
+      layout.syncStatus.textContent = 'Set repository URL in Settings before Sync.';
       persistence.loadFromDisk();
       return;
     }
     try {
-      const remote = await fetchRemoteVersion(parsed.versionUrl);
-      const local = store.getState().version?.uid ?? '';
-      layout.syncStatus.textContent = buildSyncHintMessage(local, remote);
+      const remoteSnap = await fetchRemoteSnapshotId(parsed.versionUrl);
+      const localSnap = store.getState().version?.uid ?? '';
+
+      if (localSnap === remoteSnap) {
+        layout.syncStatus.textContent = 'Same snapshot as GitHub — no download.';
+        persistence.loadFromDisk();
+        return;
+      }
+
+      layout.syncStatus.textContent = 'Snapshot differs — downloading Data from GitHub…';
+      await replaceLocalDataFromGithubRaw(fs, parsed.dataRoot);
+      persistence.loadFromDisk();
+      store.updateSettings((s) => {
+        s.remoteRepoHint = syncedRepoHint;
+        s.remoteGithubBranch = syncedGhBranch;
+      });
+      persistence.saveImmediate({ skipUidBump: true });
+      layout.syncStatus.textContent = 'Replaced local Data from GitHub and reloaded.';
     } catch (e) {
-      const msg = e && typeof e === 'object' && 'message' in e ? e.message : String(e);
-      layout.syncStatus.textContent = `Remote check failed: ${msg}. Reloading from disk.`;
+      const msg =
+        e && typeof e === 'object' && 'message' in e ? /** @type {{ message: string }} */ (e).message : String(e);
+      layout.syncStatus.textContent = `Sync failed: ${msg}`;
+      persistence.loadFromDisk();
     }
-    persistence.loadFromDisk();
   }
 }
