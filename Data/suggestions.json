@@ -17,6 +17,24 @@
       "kind": "devNote",
       "createdAt": "2026-05-07T19:33:41.729Z",
       "updatedAt": "2026-05-07T19:33:41.730Z"
+    },
+    {
+      "id": "sg-0l8xord1mow0p4vb",
+      "title": "fdgdfgdsf",
+      "body": "sdfgdfsgdf",
+      "category": "Code",
+      "priority": "Medium",
+      "status": "Pending",
+      "rejectionReason": "",
+      "targetRefs": [
+        {
+          "type": "wikiTableRow",
+          "id": "p-intro|b-plscs3fz|br-ecaotwsl"
+        }
+      ],
+      "kind": "suggestion",
+      "createdAt": "2026-05-07T21:47:56.519Z",
+      "updatedAt": "2026-05-07T21:47:56.519Z"
     }
   ],
   "archived": []

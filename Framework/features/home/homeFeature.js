@@ -58,10 +58,18 @@ export function createHomeFeature(ctx) {
     const { wiki } = ctx.store.getState();
     wikiGrid.replaceChildren();
 
+    function navigateToWikiPage(pageId) {
+      if (!pageId) return;
+      if (typeof ctx.navigateToWikiPage === 'function') ctx.navigateToWikiPage(pageId);
+      else ctx.router.setRoute(`wiki:${pageId}`);
+    }
+
     const pages = Array.isArray(wiki.pages) ? wiki.pages : [];
     for (const p of pages) {
       const c = document.createElement('article');
       c.className = 'pm-wiki-card pm-home-wiki-tile';
+      c.setAttribute('role', 'button');
+      c.tabIndex = 0;
 
       const ic = typeof p.icon === 'string' ? p.icon.trim() : '';
       const url = resolveWikiPageIconUrl(ic);
@@ -72,6 +80,7 @@ export function createHomeFeature(ctx) {
         img.className = 'pm-wiki-icon-img';
         img.src = url;
         img.alt = '';
+        img.draggable = false;
         img.addEventListener(
           'error',
           () => {
@@ -101,12 +110,25 @@ export function createHomeFeature(ctx) {
       name.textContent = p.title;
 
       c.append(iconWrap, name);
-      c.addEventListener('click', () => ctx.router.setRoute(`wiki:${p.id}`));
+      c.addEventListener('pointerdown', (ev) => {
+        if (ev.button === 0) ev.preventDefault();
+      });
+      c.addEventListener('pointerup', (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        navigateToWikiPage(p.id);
+      });
+      c.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        ev.preventDefault();
+        navigateToWikiPage(p.id);
+      });
       wikiGrid.appendChild(c);
     }
   }
 
   const unsub = ctx.store.subscribe(render);
+  render();
 
   return {
     id: 'home',

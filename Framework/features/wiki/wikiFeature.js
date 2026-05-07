@@ -68,6 +68,7 @@ function createBlock(kind) {
       return {
         id: newBlockId(),
         type: 'table',
+        title: '',
         rows: [
           { id: newTableRowId(), cells: ['', '', ''] },
           { id: newTableRowId(), cells: ['', '', ''] },
@@ -578,6 +579,9 @@ export function createWikiFeature(ctx) {
   /** @param {HTMLElement} wrapper */
   function wireTableBlock(wrapper, blockIndex, block) {
     const tblBlockId = /** @type {{id:string}} */ (draftBlocks[blockIndex]).id;
+    let tableTitle = typeof /** @type {{title?:unknown}} */ (block).title === 'string'
+      ? /** @type {{title:string}} */ (block).title
+      : '';
 
     const defaultCells = ['', '', ''];
     const defaultRowModel = () => ({
@@ -611,6 +615,13 @@ export function createWikiFeature(ctx) {
     const shell = document.createElement('div');
     shell.className = 'pm-wiki-block-table-shell';
 
+    const titleInput = document.createElement('input');
+    titleInput.className = 'pm-input pm-wiki-table-title-input';
+    titleInput.placeholder = 'Table title';
+    titleInput.value = tableTitle;
+    titleInput.disabled = !canEdit();
+    titleInput.readOnly = !canEdit();
+
     const table = document.createElement('table');
     table.className = 'pm-wiki-block-table';
     const tbody = document.createElement('tbody');
@@ -620,10 +631,16 @@ export function createWikiFeature(ctx) {
       draftBlocks[blockIndex] = {
         id: tblBlockId,
         type: 'table',
+        title: tableTitle,
         rows,
       };
       schedulePersist();
     };
+
+    titleInput.addEventListener('input', () => {
+      tableTitle = titleInput.value;
+      syncWhole();
+    });
 
     const columnCount = () => {
       let max = 0;
@@ -706,7 +723,7 @@ export function createWikiFeature(ctx) {
 
     renderTableRows();
     syncWhole();
-    shell.append(table, addRowHit);
+    shell.append(titleInput, table, addRowHit);
     wrapper.appendChild(shell);
   }
 
@@ -772,6 +789,16 @@ export function createWikiFeature(ctx) {
             wrap.appendChild(img);
           } else wrap.appendChild(Object.assign(document.createElement('span'), { className: 'pm-muted', textContent: '(Image)' }));
         } else if (typ === 'table') {
+          const tableTitle =
+            typeof /** @type {{title?:unknown}} */ (block).title === 'string'
+              ? /** @type {{title:string}} */ (block).title.trim()
+              : '';
+          if (tableTitle) {
+            const h = document.createElement('div');
+            h.className = 'pm-wiki-table-title';
+            h.textContent = tableTitle;
+            wrap.appendChild(h);
+          }
           const table = document.createElement('table');
           table.className = 'pm-wiki-block-table';
           const tblBlockId =
@@ -863,7 +890,7 @@ export function createWikiFeature(ctx) {
 
       if (type === 'text') wireTextBlock(bodyInner, bi, /** @type {{content?:string,id:string,type:'text'}} */ (blockRaw));
       else if (type === 'image') wireImageBlock(bodyInner, bi, /** @type {{src?:string,alt?:string,id:string,type:'image'}} */ (blockRaw));
-      else if (type === 'table') wireTableBlock(bodyInner, bi, /** @type {{rows?:unknown,id:string,type:'table'}} */ (blockRaw));
+      else if (type === 'table') wireTableBlock(bodyInner, bi, /** @type {{rows?:unknown,title?:unknown,id:string,type:'table'}} */ (blockRaw));
       else if (type === 'separator') {
         const hr = document.createElement('hr');
         hr.className = 'pm-wiki-sep-line';
@@ -890,6 +917,8 @@ export function createWikiFeature(ctx) {
       saveTimer = null;
       if (selectedPageId && canEdit()) flushToStore();
     }
+
+    root.classList.toggle('pm-wiki--readonly', !canEdit());
 
     const list = pages();
     pageSelect.replaceChildren();

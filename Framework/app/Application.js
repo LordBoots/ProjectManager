@@ -62,7 +62,7 @@ export default class Application {
       },
     });
 
-    const ctx = { store, bus, permissions, persistence, layout, router: routeApi };
+    const ctx = { store, bus, permissions, persistence, layout, router: routeApi, navigateToWikiPage: null };
 
     const kanban = createKanbanFeature(ctx);
     const wiki = createWikiFeature(ctx);
@@ -92,6 +92,11 @@ export default class Application {
       },
     });
     routeApi.impl = router;
+    ctx.navigateToWikiPage = (pageId) => {
+      if (!pageId) return;
+      router.setRoute(`wiki:${pageId}`);
+      wiki.setPage(pageId);
+    };
 
     const offNav = bus.on(BusEvents.NAVIGATE_TO_ENTITY, (ref) => {
       if (!ref?.type || !ref?.id) return;

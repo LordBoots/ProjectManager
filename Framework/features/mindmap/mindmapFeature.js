@@ -17,6 +17,7 @@ const IMAGE_MIN_H = 48;
 const IMAGE_ANCHOR_HIT_PX = 18;
 const LABEL_DEFAULT_BG = "#3f444d";
 const LABEL_DEFAULT_FONT_COLOR = "#f4f6fb";
+const DEFAULT_EDGE_COLOR = "#7d869a";
 
 /** Font size presets for mind map node text styling (dropdown values match stored style strings). */
 const MM_FONT_SIZE_CHOICES = [
@@ -112,6 +113,9 @@ function imageAnchorSelectionKey(nodeId, anchorId) {
 }
 function styledValue(n, key, fallback) {
   return n.styles && Object.prototype.hasOwnProperty.call(n.styles, key) ? n.styles[key] : fallback;
+}
+function colorValue(v, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(v || "")) ? String(v) : fallback;
 }
 function wikiTopBandExtraH(n) {
   return isWikiLink(n) && stylesOf(n).topBand ? WIKI_TOP_BAND_EXTRA_H : 0;
@@ -349,7 +353,10 @@ export function createMindmapFeature(ctx) {
     dragFR = null,
     boxSel = null,
     clipboard = null,
-    pendingImageAnchorPlace = null;
+    pendingImageAnchorPlace = null,
+    editingFrameTitleId = null,
+    editingFrameTitleDraft = "",
+    editingFrameTitleOriginal = "";
 
   const root = document.createElement("div");
   root.className = "pm-mm-page";
@@ -510,6 +517,12 @@ export function createMindmapFeature(ctx) {
       if (px >= +n.x && px <= +n.x + ww && py >= +n.y && py <= +n.y + hh) return n;
     }
     return null;
+  }
+  function selectedLabelLinkEdge() {
+    if (editing !== null || selEdges.size !== 1) return null;
+    const id = [...selEdges][0];
+    const e = (mm().edges || []).find((x) => x.id === id);
+    return e && e.imageAnchorId ? e : null;
   }
   function syncImageNodeNaturalSize(nodeId, img) {
     const iw = img.naturalWidth || 0,
@@ -717,7 +730,7 @@ export function createMindmapFeature(ctx) {
       marker.appendChild(arrowPath);
       defs.appendChild(marker);
     }
-    mkMarker("pm-mm-arrow-end-ov", "#7d869a");
+    mkMarker("pm-mm-arrow-end-ov", DEFAULT_EDGE_COLOR);
     mkMarker("pm-mm-arrow-end-ov-sel", "#6c8cff");
     svgEdgesOverlay.appendChild(defs);
 
@@ -735,29 +748,35 @@ export function createMindmapFeature(ctx) {
       const { x: ax, y: ay } = anchorPlaneFromImageNorm(A, spot.nx, spot.ny);
       const { x1: xa, y1: ya, x2: xb, y2: yb } = directedEdgePointToNode(ax, ay, B);
       const selected = selEdges.has(e.id);
-      const hit = document.createElementNS(NS, "line");
-      hit.setAttribute("class", "pm-mm-edge-hit");
-      hit.setAttribute("pointer-events", "stroke");
-      hit.setAttribute("x1", String(xa));
-      hit.setAttribute("y1", String(ya));
-      hit.setAttribute("x2", String(xb));
-      hit.setAttribute("y2", String(yb));
-      hit.setAttribute("stroke", "#303030");
-      hit.setAttribute("stroke-opacity", "0");
-      hit.setAttribute("stroke-width", "20");
-      hit.setAttribute("stroke-linecap", "round");
+      const edgeColor = colorValue(e.color, DEFAULT_EDGE_COLOR);
+      const markerId = "pm-mm-arrow-anchor-" + String(e.id).replace(/[^a-zA-Z0-9_-]/g, "-");
+      mkMarker(markerId, edgeColor);
       const vis = document.createElementNS(NS, "line");
       vis.setAttribute("pointer-events", "none");
       vis.setAttribute("x1", String(xa));
       vis.setAttribute("y1", String(ya));
       vis.setAttribute("x2", String(xb));
       vis.setAttribute("y2", String(yb));
-      vis.setAttribute("stroke", selected ? "#6c8cff" : "#7d869a");
+      vis.setAttribute("stroke", edgeColor);
       vis.setAttribute("stroke-width", selected ? "3" : "2");
-      vis.setAttribute("marker-end", `url(#pm-mm-arrow-end-ov${selected ? "-sel" : ""})`);
-      svgEdgesOverlay.appendChild(hit);
+      vis.setAttribute("marker-end", `url(#${markerId})`);
       svgEdgesOverlay.appendChild(vis);
-      hit.addEventListener("mousedown", (ev) => {
+      if (!dev() || !sel.has(B.id)) continue;
+      const handle = document.createElementNS(NS, "circle");
+      handle.setAttribute("class", "pm-mm-edge-hit");
+      handle.setAttribute("pointer-events", "all");
+      handle.setAttribute("cx", String((xa + xb) / 2));
+      handle.setAttribute("cy", String((ya + yb) / 2));
+      handle.setAttribute("r", selected ? "7" : "5");
+      handle.setAttribute("fill", selected ? "#ffffff" : edgeColor);
+      handle.setAttribute("stroke", selected ? "#6c8cff" : "#ffffff");
+      handle.setAttribute("stroke-width", selected ? "3" : "2");
+      handle.style.cursor = "pointer";
+      const title = document.createElementNS(NS, "title");
+      title.textContent = "Edit label link";
+      handle.appendChild(title);
+      svgEdgesOverlay.appendChild(handle);
+      handle.addEventListener("mousedown", (ev) => {
         ev.stopPropagation();
         if (ev.button !== 0 || !dev()) return;
         selImageAnchors.clear();
@@ -766,6 +785,7 @@ export function createMindmapFeature(ctx) {
           sel.clear();
           selEdges.clear();
           selFrames.clear();
+          sel.add(B.id);
           selEdges.add(e.id);
         }
         endMindmapEditing();
@@ -1175,11 +1195,64 @@ export function createMindmapFeature(ctx) {
     pendingImageAnchorPlace = null;
   }
 
+  function finishFrameTitleEdit(commit) {
+    const fid = editingFrameTitleId;
+    if (!fid) return false;
+    const nextVal = editingFrameTitleDraft.trim();
+    const prevSnapshot = editingFrameTitleOriginal.trim();
+    editingFrameTitleId = null;
+    editingFrameTitleDraft = "";
+    editingFrameTitleOriginal = "";
+    if (commit && nextVal !== prevSnapshot) {
+      mut();
+      ctx.store.updateMindmap((mm2) => {
+        const f = (mm2.frames || []).find((ff) => ff.id === fid);
+        if (!f) return;
+        f.title = nextVal;
+      });
+    }
+    draw();
+    return true;
+  }
+
   function rebuildStrip() {
     strip.replaceChildren();
-    const on = editing !== null;
+    const selectedLabelLink = selectedLabelLinkEdge();
+    const on = editing !== null || !!selectedLabelLink;
     strip.classList.toggle("pm-mm-styles-visible", on);
     if (!on) return;
+    if (selectedLabelLink) {
+      const row = (lab, el) => {
+        const r = document.createElement("div");
+        r.className = "pm-mm-style-field";
+        const l = document.createElement("label");
+        l.textContent = lab;
+        r.append(l, el);
+        strip.appendChild(r);
+      };
+      const lineColor = document.createElement("input");
+      lineColor.type = "color";
+      lineColor.value = colorValue(selectedLabelLink.color, DEFAULT_EDGE_COLOR);
+      lineColor.addEventListener("input", () => {
+        ctx.store.updateMindmap((m) => {
+          const e = (m.edges || []).find((x) => x.id === selectedLabelLink.id);
+          if (e) e.color = lineColor.value;
+        });
+        draw();
+      });
+      row("Line", lineColor);
+      const done = document.createElement("button");
+      done.type = "button";
+      done.className = "pm-btn";
+      done.textContent = "Done";
+      done.addEventListener("click", () => {
+        selEdges.clear();
+        rebuildStrip();
+        draw();
+      });
+      row("", done);
+      return;
+    }
     const n = (mm().nodes || []).find((x) => x.id === editing);
     if (!n) {
       endMindmapEditing();
@@ -1720,16 +1793,8 @@ export function createMindmapFeature(ctx) {
       const host = ae.closest(".pm-mm-frame-title-host");
       const fid = host?.dataset?.frameId;
       if (fid) {
-        const nextVal = ae.value.trim();
-        const prevF = (mm().frames || []).find((ff) => ff.id === fid);
-        const prevVal = typeof prevF?.title === "string" ? prevF.title.trim() : "";
-        if (nextVal !== prevVal) {
-          mut();
-          ctx.store.updateMindmap((mm2) => {
-            const f = (mm2.frames || []).find((ff) => ff.id === fid);
-            if (f) f.title = nextVal;
-          }, { silent: true });
-        }
+        editingFrameTitleId = fid;
+        editingFrameTitleDraft = ae.value;
       }
     }
 
@@ -1755,64 +1820,59 @@ export function createMindmapFeature(ctx) {
       lab.className = "pm-mm-frame-title-text" + (!stored ? " pm-mm-frame-title-text--empty" : "");
       lab.textContent = stored || "Add title";
 
-      hit.appendChild(lab);
-
       if (dev()) {
         hit.addEventListener("mousedown", (e) => e.stopPropagation());
         hit.addEventListener("pointerdown", (e) => e.stopPropagation());
         hit.addEventListener("dblclick", (e) => e.stopPropagation());
 
-        hit.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!dev() || hit.querySelector(".pm-mm-frame-title-input")) return;
-
-          const prevSnapshot = (typeof fr.title === "string" ? fr.title : "").trim();
-
-          lab.style.display = "none";
+        const mountInput = () => {
           const inp = document.createElement("input");
           inp.type = "text";
           inp.className = "pm-mm-frame-title-input pm-input";
           inp.placeholder = "Frame title";
-          inp.value = typeof fr.title === "string" ? fr.title : "";
-          hit.appendChild(inp);
-          inp.focus();
-          inp.select();
+          inp.value = editingFrameTitleDraft;
+          hit.replaceChildren(inp);
 
-          const finalize = (commit) => {
-            const inpEl = hit.querySelector("input.pm-mm-frame-title-input");
-            if (!inpEl) return;
-            const nextVal = inpEl.value.trim();
-            inpEl.remove();
-            lab.style.display = "";
-            const shown = commit ? nextVal : prevSnapshot;
-            lab.textContent = shown || "Add title";
-            lab.classList.toggle("pm-mm-frame-title-text--empty", !shown);
-
-            if (commit && nextVal !== prevSnapshot) {
-              mut();
-              const fid = fr.id;
-              ctx.store.updateMindmap((mm2) => {
-                const f = (mm2.frames || []).find((ff) => ff.id === fid);
-                if (!f) return;
-                f.title = nextVal;
-              });
-              draw();
-            }
-          };
-
-          inp.addEventListener("blur", () => finalize(true));
+          inp.addEventListener("input", () => {
+            editingFrameTitleDraft = inp.value;
+          });
+          inp.addEventListener("blur", () => {
+            setTimeout(() => {
+              if (editingFrameTitleId === fr.id && document.activeElement !== inp) inp.focus();
+            }, 0);
+          });
           inp.addEventListener("keydown", (ev) => {
             if (ev.key === "Escape") {
               ev.preventDefault();
               ev.stopPropagation();
-              finalize(false);
+              finishFrameTitleEdit(false);
             } else if (ev.key === "Enter") {
               ev.preventDefault();
-              inp.blur();
+              finishFrameTitleEdit(true);
             }
           });
-        });
+          setTimeout(() => {
+            inp.focus();
+            inp.select();
+          }, 0);
+        };
+
+        if (editingFrameTitleId === fr.id) {
+          mountInput();
+        } else {
+          hit.appendChild(lab);
+          hit.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!dev()) return;
+            editingFrameTitleId = fr.id;
+            editingFrameTitleDraft = typeof fr.title === "string" ? fr.title : "";
+            editingFrameTitleOriginal = editingFrameTitleDraft;
+            mountInput();
+          });
+        }
+      } else {
+        hit.appendChild(lab);
       }
 
       host.appendChild(hit);
@@ -2168,6 +2228,14 @@ export function createMindmapFeature(ctx) {
   inner.addEventListener(
     "mousedown",
     (ev) => {
+      const t0 = ev.target;
+      if (
+        editingFrameTitleId &&
+        t0 instanceof Element &&
+        !t0.closest(".pm-mm-frame-title-host")
+      ) {
+        finishFrameTitleEdit(true);
+      }
       if (ev.button === 1) {
         ev.preventDefault();
         ev.stopPropagation();
@@ -2452,6 +2520,7 @@ export function createMindmapFeature(ctx) {
     if (ev.code === "Escape" && selEdges.size) {
       ev.preventDefault();
       selEdges.clear();
+      rebuildStrip();
       draw();
       return;
     }
@@ -2530,6 +2599,7 @@ export function createMindmapFeature(ctx) {
           mm2.edges = (mm2.edges || []).filter((x) => !selEdges.has(x.id));
         });
         selEdges.clear();
+        rebuildStrip();
         draw();
         return;
       }
@@ -2654,6 +2724,7 @@ export function createMindmapFeature(ctx) {
             fromNodeId: idMap.get(ed.fromNodeId),
             toNodeId: idMap.get(ed.toNodeId),
             ...(ed.imageAnchorId ? { imageAnchorId: ed.imageAnchorId } : {}),
+            ...(ed.color ? { color: ed.color } : {}),
           });
         }
         mm2.edges = [...(mm2.edges || []), ...more];
@@ -2705,6 +2776,7 @@ export function createMindmapFeature(ctx) {
               fromNodeId: a,
               toNodeId: b,
               ...(e.imageAnchorId ? { imageAnchorId: e.imageAnchorId } : {}),
+              ...(e.color ? { color: e.color } : {}),
             };
           })
           .filter(Boolean);
