@@ -12,6 +12,9 @@ const LABEL_NODE_W = 120;
 const LABEL_NODE_H = 44;
 const FRAME_INNER_PAD = 10;
 const FRAME_CREATE_PAD = 28;
+const IMAGE_MIN_W = 64;
+const IMAGE_MIN_H = 48;
+const IMAGE_ANCHOR_HIT_PX = 18;
 
 /** Font size presets for mind map node text styling (dropdown values match stored style strings). */
 const MM_FONT_SIZE_CHOICES = [
@@ -89,6 +92,21 @@ function storedNodeW(n) {
 }
 function storedNodeH(n) {
   return +n.h || defaultNodeH(n);
+}
+function imageNaturalSize(n) {
+  const w = +n.imageW || +n.naturalW || 0,
+    h = +n.imageH || +n.naturalH || 0;
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+function imageAspect(n) {
+  const natural = imageNaturalSize(n);
+  if (natural) return natural.w / natural.h;
+  const w = storedNodeW(n),
+    h = storedNodeH(n);
+  return w > 0 && h > 0 ? w / h : 4 / 3;
+}
+function imageAnchorSelectionKey(nodeId, anchorId) {
+  return String(nodeId) + ":" + String(anchorId);
 }
 function wikiTopBandExtraH(n) {
   return isWikiLink(n) && stylesOf(n).topBand ? WIKI_TOP_BAND_EXTRA_H : 0;
@@ -311,7 +329,8 @@ export function createMindmapFeature(ctx) {
     redo = [],
     sel = new Set(),
     selEdges = new Set(),
-    selFrames = new Set();
+    selFrames = new Set(),
+    selImageAnchors = new Set();
   let editing = null,
     linkA = null,
     linkDraft = null,
@@ -368,6 +387,9 @@ export function createMindmapFeature(ctx) {
   const linkDropHint = document.createElement("div");
   linkDropHint.className = "pm-mm-link-drop-hint";
   plane.appendChild(linkDropHint);
+  const linkAnchorDropHints = document.createElement("div");
+  linkAnchorDropHints.className = "pm-mm-link-anchor-drop-layer";
+  plane.appendChild(linkAnchorDropHints);
 
   /** Drawn last in `draw()` so titles sit above nodes; hit targets have `pointer-events: auto`. */
   const frameTitlesLayer = document.createElement("div");
@@ -422,6 +444,10 @@ export function createMindmapFeature(ctx) {
     const r = inner.getBoundingClientRect();
     return { x: (cx - r.left - vx) / sc, y: (cy - r.top - vy) / sc };
   }
+  function clientFromPlane(px, py) {
+    const r = inner.getBoundingClientRect();
+    return { x: r.left + vx + px * sc, y: r.top + vy + py * sc };
+  }
   /** Plane coordinates for a hotspot normalized relative to the image node's `.pm-mm-img-wrap`. Requires DOM laid out (called during paint after pads appended). */
   function anchorPlaneFromImageNorm(imageNode, nx, ny) {
     const wrap = plane.querySelector(`[data-node-id="${imageNode.id}"] .pm-mm-img-wrap`);
@@ -437,6 +463,38 @@ export function createMindmapFeature(ctx) {
       sy = rect.top + uy * rect.height;
     return planeFromClient(sx, sy);
   }
+  function imageNormFromPlane(imageNode, px, py) {
+    const wrap = plane.querySelector(`[data-node-id="${imageNode.id}"] .pm-mm-img-wrap`);
+    const clamp01 = (z) => Math.max(0, Math.min(1, z));
+    if (!wrap) {
+      const w = renderedNodeW(imageNode),
+        h = renderedNodeH(imageNode);
+      const nx = (+px - +imageNode.x) / Math.max(w, 1e-6),
+        ny = (+py - +imageNode.y) / Math.max(h, 1e-6);
+      return { nx: clamp01(nx), ny: clamp01(ny), inside: nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1 };
+    }
+    const rect = wrap.getBoundingClientRect();
+    const c = clientFromPlane(px, py);
+    const nx = (c.x - rect.left) / Math.max(rect.width, 1e-6),
+      ny = (c.y - rect.top) / Math.max(rect.height, 1e-6);
+    return { nx: clamp01(nx), ny: clamp01(ny), inside: nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1 };
+  }
+  function hitImageAnchorPlane(px, py, imageNode) {
+    if (String(imageNode?.type) !== "image") return null;
+    const anchors = Array.isArray(imageNode.labelLinks) ? imageNode.labelLinks : [];
+    const hitRadius = IMAGE_ANCHOR_HIT_PX / Math.max(sc, 0.001);
+    let best = null,
+      bestD = Infinity;
+    for (const spot of anchors) {
+      const p = anchorPlaneFromImageNorm(imageNode, spot.nx, spot.ny);
+      const d = Math.hypot(p.x - px, p.y - py);
+      if (d <= hitRadius && d < bestD) {
+        best = spot;
+        bestD = d;
+      }
+    }
+    return best;
+  }
   function hitNodePlane(px, py, excludeId) {
     const nodes = (mm().nodes || []).slice();
     for (let i = nodes.length - 1; i >= 0; i--) {
@@ -448,7 +506,36 @@ export function createMindmapFeature(ctx) {
     }
     return null;
   }
+  function syncImageNodeNaturalSize(nodeId, img) {
+    const iw = img.naturalWidth || 0,
+      ih = img.naturalHeight || 0;
+    if (iw <= 0 || ih <= 0) return;
+    requestAnimationFrame(() => {
+      const pad = plane.querySelector(`[data-node-id="${nodeId}"]`);
+      const wrap = pad?.querySelector(".pm-mm-img-wrap");
+      const padRect = pad?.getBoundingClientRect?.();
+      const wrapRect = wrap?.getBoundingClientRect?.();
+      const chromeH = padRect && wrapRect ? Math.max(0, (padRect.height - wrapRect.height) / Math.max(sc, 0.001)) : 0;
+      let changed = false;
+      ctx.store.updateMindmap((mm2) => {
+        const o = (mm2.nodes || []).find((z) => z.id === nodeId);
+        if (!o || String(o.type) !== "image") return;
+        const targetH = Math.max(IMAGE_MIN_H, (+o.w || 200) / (iw / ih)) + chromeH;
+        if (+o.imageW !== iw || +o.imageH !== ih) {
+          o.imageW = iw;
+          o.imageH = ih;
+          changed = true;
+        }
+        if (Math.abs((+o.h || 0) - targetH) > 0.75) {
+          o.h = targetH;
+          changed = true;
+        }
+      }, { silent: true });
+      if (changed) draw();
+    });
+  }
   function syncLinkDropHint() {
+    linkAnchorDropHints.replaceChildren();
     if (!linkDraft || !linkDraft.hoverTargetId) {
       linkDropHint.style.visibility = "hidden";
       return;
@@ -458,9 +545,30 @@ export function createMindmapFeature(ctx) {
       linkDropHint.style.visibility = "hidden";
       return;
     }
-    linkDropHint.style.left = +n.x + (+n.w || 140) / 2 + "px";
-    linkDropHint.style.top = +n.y + (+n.h || 80) / 2 + "px";
+    linkDropHint.style.left = +n.x + renderedNodeW(n) / 2 + "px";
+    linkDropHint.style.top = +n.y + renderedNodeH(n) / 2 + "px";
     linkDropHint.style.visibility = "visible";
+    if (String(n.type) !== "image") return;
+    const source = (mm().nodes || []).find((x) => x.id === linkDraft.fromNodeId);
+    const anchors = Array.isArray(n.labelLinks) ? n.labelLinks : [];
+    for (const spot of anchors) {
+      const p = anchorPlaneFromImageNorm(n, spot.nx, spot.ny);
+      const dot = document.createElement("span");
+      dot.className =
+        "pm-mm-link-anchor-drop" +
+        (linkDraft.hoverImageAnchorId === spot.id ? " pm-mm-link-anchor-drop--active" : "");
+      dot.style.left = p.x + "px";
+      dot.style.top = p.y + "px";
+      linkAnchorDropHints.appendChild(dot);
+    }
+    if (isLabel(source) && linkDraft.hoverImageAnchorCandidate) {
+      const p = anchorPlaneFromImageNorm(n, linkDraft.hoverImageAnchorCandidate.nx, linkDraft.hoverImageAnchorCandidate.ny);
+      const dot = document.createElement("span");
+      dot.className = "pm-mm-link-anchor-drop pm-mm-link-anchor-drop--candidate";
+      dot.style.left = p.x + "px";
+      dot.style.top = p.y + "px";
+      linkAnchorDropHints.appendChild(dot);
+    }
   }
   function pruneStored() {
     ctx.store.updateMindmap((m) => {
@@ -557,6 +665,7 @@ export function createMindmapFeature(ctx) {
       hit.addEventListener("mousedown", (ev) => {
         ev.stopPropagation();
         if (ev.button !== 0 || !dev()) return;
+        selImageAnchors.clear();
         if (ev.shiftKey) selEdges.has(e.id) ? selEdges.delete(e.id) : selEdges.add(e.id);
         else {
           sel.clear();
@@ -646,6 +755,7 @@ export function createMindmapFeature(ctx) {
       hit.addEventListener("mousedown", (ev) => {
         ev.stopPropagation();
         if (ev.button !== 0 || !dev()) return;
+        selImageAnchors.clear();
         if (ev.shiftKey) selEdges.has(e.id) ? selEdges.delete(e.id) : selEdges.add(e.id);
         else {
           sel.clear();
@@ -728,6 +838,8 @@ export function createMindmapFeature(ctx) {
       im.alt = "";
       im.draggable = false;
       im.addEventListener("dragstart", (e) => e.preventDefault());
+      im.addEventListener("load", () => syncImageNodeNaturalSize(n.id, im), { once: true });
+      if (im.complete) syncImageNodeNaturalSize(n.id, im);
       const imWrap = document.createElement("div");
       imWrap.className = "pm-mm-img-wrap";
       imWrap.appendChild(im);
@@ -739,9 +851,32 @@ export function createMindmapFeature(ctx) {
         layer.setAttribute("aria-hidden", "true");
         for (const L of links) {
           const dot = document.createElement("span");
-          dot.className = "pm-mm-img-anchor-dot";
+          const anchorKey = imageAnchorSelectionKey(n.id, L.id);
+          dot.className = "pm-mm-img-anchor-dot" + (selImageAnchors.has(anchorKey) ? " pm-mm-img-anchor-dot--selected" : "");
           dot.style.left = (Math.max(0, Math.min(1, +L.nx || 0)) * 100).toFixed(4) + "%";
           dot.style.top = (Math.max(0, Math.min(1, +L.ny || 0)) * 100).toFixed(4) + "%";
+          if (dev()) {
+            dot.title = "Image anchor";
+            dot.addEventListener("mousedown", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              if (ev.button !== 0) return;
+              inner.focus();
+              if (ev.shiftKey) {
+                selImageAnchors.has(anchorKey) ? selImageAnchors.delete(anchorKey) : selImageAnchors.add(anchorKey);
+              } else {
+                sel.clear();
+                selEdges.clear();
+                selFrames.clear();
+                selImageAnchors.clear();
+                selImageAnchors.add(anchorKey);
+              }
+              endMindmapEditing();
+              pendingImageAnchorPlace = null;
+              rebuildStrip();
+              draw();
+            });
+          }
           layer.appendChild(dot);
         }
         imWrap.appendChild(layer);
@@ -787,6 +922,7 @@ export function createMindmapFeature(ctx) {
           });
           pendingImageAnchorPlace = null;
           sel.clear();
+          selImageAnchors.clear();
           sel.add(labelId);
           rebuildStrip();
           draw();
@@ -1410,6 +1546,7 @@ export function createMindmapFeature(ctx) {
     sel.clear();
     selEdges.clear();
     selFrames.clear();
+    selImageAnchors.clear();
     selFrames.add(id);
     draw();
   }
@@ -1448,6 +1585,7 @@ export function createMindmapFeature(ctx) {
         sel.clear();
         selEdges.clear();
         selFrames.clear();
+        selImageAnchors.clear();
         selFrames.add(fr.id);
         endMindmapEditing();
         rebuildStrip();
@@ -1470,6 +1608,7 @@ export function createMindmapFeature(ctx) {
       sel.clear();
       selEdges.clear();
       selFrames.clear();
+      selImageAnchors.clear();
       selFrames.add(fr.id);
       endMindmapEditing();
       rebuildStrip();
@@ -1534,6 +1673,7 @@ export function createMindmapFeature(ctx) {
         if (ev.shiftKey) {
           selEdges.clear();
           sel.clear();
+          selImageAnchors.clear();
           selFrames.has(fr.id) ? selFrames.delete(fr.id) : selFrames.add(fr.id);
           endMindmapEditing();
           rebuildStrip();
@@ -1545,6 +1685,7 @@ export function createMindmapFeature(ctx) {
         sel.clear();
         selEdges.clear();
         selFrames.clear();
+        selImageAnchors.clear();
         selFrames.add(fr.id);
         const orig = new Map();
         orig.set("__frame__", { x: +fr.x, y: +fr.y });
@@ -1703,6 +1844,14 @@ export function createMindmapFeature(ctx) {
     for (const fid of [...selFrames]) {
       if (!(m.frames || []).some((fr) => fr.id === fid)) selFrames.delete(fid);
     }
+    const anchorKeys = new Set();
+    for (const nn of m.nodes || []) {
+      if (String(nn.type) !== "image" || !Array.isArray(nn.labelLinks)) continue;
+      for (const spot of nn.labelLinks) anchorKeys.add(imageAnchorSelectionKey(nn.id, spot.id));
+    }
+    for (const key of [...selImageAnchors]) {
+      if (!anchorKeys.has(key)) selImageAnchors.delete(key);
+    }
     vx = typeof m.view?.x === "number" ? m.view.x : vx;
     vy = typeof m.view?.y === "number" ? m.view.y : vy;
     sc = typeof m.view?.scale === "number" ? Math.min(3.5, Math.max(0.15, m.view.scale)) : Math.min(3.5, Math.max(0.15, sc));
@@ -1766,6 +1915,7 @@ export function createMindmapFeature(ctx) {
         if (!dev()) {
           selEdges.clear();
           selFrames.clear();
+          selImageAnchors.clear();
           sel.clear();
           sel.add(n.id);
           draw();
@@ -1776,6 +1926,7 @@ export function createMindmapFeature(ctx) {
           selEdges.clear();
           sel.has(n.id) ? sel.delete(n.id) : sel.add(n.id);
           selFrames.clear();
+          selImageAnchors.clear();
           endMindmapEditing();
           rebuildStrip();
           draw();
@@ -1783,6 +1934,7 @@ export function createMindmapFeature(ctx) {
         }
         selEdges.clear();
         selFrames.clear();
+        selImageAnchors.clear();
         if (!sel.has(n.id)) {
           sel.clear();
           sel.add(n.id);
@@ -1848,6 +2000,7 @@ export function createMindmapFeature(ctx) {
           editing = n.id;
           selEdges.clear();
           selFrames.clear();
+          selImageAnchors.clear();
           if (!sel.has(n.id)) {
             sel.clear();
             sel.add(n.id);
@@ -1870,6 +2023,7 @@ export function createMindmapFeature(ctx) {
           pendingImageAnchorPlace = null;
           selEdges.clear();
           selFrames.clear();
+          selImageAnchors.clear();
           if (!sel.has(n.id)) {
             sel.clear();
             sel.add(n.id);
@@ -1883,6 +2037,7 @@ export function createMindmapFeature(ctx) {
           editing = n.id;
           selEdges.clear();
           selFrames.clear();
+          selImageAnchors.clear();
           if (!sel.has(n.id)) {
             sel.clear();
             sel.add(n.id);
@@ -1934,7 +2089,20 @@ export function createMindmapFeature(ctx) {
           ev.stopPropagation();
           ev.preventDefault();
           mut();
-          dragR = { nid: n.id, w0: +n.w || 140, h0: +n.h || 80, cx: ev.clientX, cy: ev.clientY };
+          let imageChromeH = 0;
+          if (String(n.type) === "image") {
+            const padRect = pad.getBoundingClientRect();
+            const wrapRect = pad.querySelector(".pm-mm-img-wrap")?.getBoundingClientRect?.();
+            imageChromeH = wrapRect ? Math.max(0, (padRect.height - wrapRect.height) / Math.max(sc, 0.001)) : 0;
+          }
+          dragR = {
+            nid: n.id,
+            w0: +n.w || 140,
+            h0: +n.h || 80,
+            cx: ev.clientX,
+            cy: ev.clientY,
+            ...(String(n.type) === "image" ? { imageAspect: imageAspect(n), imageChromeH } : {}),
+          };
         });
         pad.appendChild(h);
       }
@@ -1942,6 +2110,7 @@ export function createMindmapFeature(ctx) {
     }
     plane.appendChild(svgEdgesOverlay);
     plane.appendChild(linkDropHint);
+    plane.appendChild(linkAnchorDropHints);
     drawEdges();
     drawEdgesOverlay();
     tipUp();
@@ -2063,8 +2232,23 @@ export function createMindmapFeature(ctx) {
       linkDraft.y2 = p.y;
       const hit = hitNodePlane(p.x, p.y, linkDraft.fromNodeId);
       linkDraft.hoverTargetId = hit && !rejectsMindmapEdges(hit) ? hit.id : null;
+      linkDraft.hoverImageAnchorId = null;
+      linkDraft.hoverImageAnchorCandidate = null;
+      if (hit && String(hit.type) === "image" && !rejectsMindmapEdges(hit)) {
+        const spot = hitImageAnchorPlane(p.x, p.y, hit);
+        const source = (mm().nodes || []).find((x) => x.id === linkDraft.fromNodeId);
+        if (spot) linkDraft.hoverImageAnchorId = spot.id;
+        else if (isLabel(source)) {
+          const norm = imageNormFromPlane(hit, p.x, p.y);
+          const center = anchorPlaneFromImageNorm(hit, 0.5, 0.5);
+          const centerRadius = IMAGE_ANCHOR_HIT_PX / Math.max(sc, 0.001);
+          if (norm.inside && Math.hypot(center.x - p.x, center.y - p.y) > centerRadius)
+            linkDraft.hoverImageAnchorCandidate = { nx: norm.nx, ny: norm.ny };
+        }
+      }
       drawEdges();
       drawEdgesOverlay();
+      syncLinkDropHint();
     }
     if (boxSel) {
       const r = inner.getBoundingClientRect();
@@ -2150,6 +2334,11 @@ export function createMindmapFeature(ctx) {
         if (!c || isWikiLink(c)) return;
         let nw = Math.max(48, dragR.w0 + (ev.clientX - dragR.cx) / sc),
           nh = Math.max(36, dragR.h0 + (ev.clientY - dragR.cy) / sc);
+        if (String(c.type) === "image") {
+          const aspect = dragR.imageAspect > 0 ? dragR.imageAspect : imageAspect(c);
+          nw = Math.max(IMAGE_MIN_W, nw);
+          nh = Math.max(IMAGE_MIN_H, nw / aspect) + (+dragR.imageChromeH || 0);
+        }
         nw = SF(nw);
         nh = SF(nh);
         c.w = nw;
@@ -2175,11 +2364,38 @@ export function createMindmapFeature(ctx) {
         if (tgt && !rejectsMindmapEdges(tgt) && tgt.id !== d.fromNodeId) {
           mut();
           ctx.store.updateMindmap((mm2) => {
-            const dup = (mm2.edges || []).some((e) => e.fromNodeId === d.fromNodeId && e.toNodeId === tgt.id);
+            const nodes = mm2.nodes || [];
+            const source = nodes.find((z) => z.id === d.fromNodeId);
+            const target = nodes.find((z) => z.id === tgt.id);
+            if (source && target && isLabel(source) && String(target.type) === "image") {
+              let anchorId = d.hoverImageAnchorId || "";
+              if (!anchorId && d.hoverImageAnchorCandidate) {
+                anchorId = "mla-" + Math.random().toString(36).slice(2, 9);
+                target.labelLinks = [
+                  ...(Array.isArray(target.labelLinks) ? target.labelLinks : []),
+                  { id: anchorId, nx: d.hoverImageAnchorCandidate.nx, ny: d.hoverImageAnchorCandidate.ny },
+                ];
+              }
+              if (anchorId) {
+                const dup = (mm2.edges || []).some(
+                  (e) => e.fromNodeId === target.id && e.toNodeId === source.id && e.imageAnchorId === anchorId
+                );
+                if (!dup)
+                  (mm2.edges = mm2.edges || []).push({
+                    id: "e-" + nid(),
+                    fromNodeId: target.id,
+                    toNodeId: source.id,
+                    imageAnchorId: anchorId,
+                  });
+                return;
+              }
+            }
+            const dup = (mm2.edges || []).some((e) => e.fromNodeId === d.fromNodeId && e.toNodeId === tgt.id && !e.imageAnchorId);
             if (!dup) (mm2.edges = mm2.edges || []).push({ id: "e-" + nid(), fromNodeId: d.fromNodeId, toNodeId: tgt.id });
           });
         }
         selEdges.clear();
+        selImageAnchors.clear();
         draw();
       }
 
@@ -2188,6 +2404,7 @@ export function createMindmapFeature(ctx) {
         sel.clear();
         selEdges.clear();
         selFrames.clear();
+        selImageAnchors.clear();
         inner.querySelectorAll(".pm-mm-node").forEach((el) => {
           const rr = el.getBoundingClientRect();
           if (!(rr.right < rsel.left || rr.left > rsel.right || rr.bottom < rsel.top || rr.top > rsel.bottom))
@@ -2228,6 +2445,12 @@ export function createMindmapFeature(ctx) {
     if (ev.code === "Escape" && selEdges.size) {
       ev.preventDefault();
       selEdges.clear();
+      draw();
+      return;
+    }
+    if (ev.code === "Escape" && selImageAnchors.size) {
+      ev.preventDefault();
+      selImageAnchors.clear();
       draw();
       return;
     }
@@ -2300,6 +2523,23 @@ export function createMindmapFeature(ctx) {
           mm2.edges = (mm2.edges || []).filter((x) => !selEdges.has(x.id));
         });
         selEdges.clear();
+        draw();
+        return;
+      }
+
+      if (selImageAnchors.size) {
+        mut();
+        const selectedAnchors = new Set(selImageAnchors);
+        ctx.store.updateMindmap((mm2) => {
+          for (const nn of mm2.nodes || []) {
+            if (String(nn.type) !== "image" || !Array.isArray(nn.labelLinks)) continue;
+            nn.labelLinks = nn.labelLinks.filter((spot) => !selectedAnchors.has(imageAnchorSelectionKey(nn.id, spot.id)));
+          }
+          mm2.edges = (mm2.edges || []).filter(
+            (ed) => !ed.imageAnchorId || !selectedAnchors.has(imageAnchorSelectionKey(ed.fromNodeId, ed.imageAnchorId))
+          );
+        });
+        selImageAnchors.clear();
         draw();
         return;
       }
@@ -2412,6 +2652,7 @@ export function createMindmapFeature(ctx) {
         mm2.edges = [...(mm2.edges || []), ...more];
       });
       sel.clear();
+      selImageAnchors.clear();
       idMap.forEach((nid2) => sel.add(nid2));
       draw();
       return;
@@ -2463,6 +2704,7 @@ export function createMindmapFeature(ctx) {
         mm2.edges = [...(mm2.edges || []), ...ne];
       });
       sel.clear();
+      selImageAnchors.clear();
       idMap.forEach((v) => sel.add(v));
       draw();
       return;
@@ -2481,6 +2723,7 @@ export function createMindmapFeature(ctx) {
       if (!n) return;
       selEdges.clear();
       selFrames.clear();
+      selImageAnchors.clear();
       sel.clear();
       sel.add(id);
       const cx = +n.x + renderedNodeW(n) / 2,
