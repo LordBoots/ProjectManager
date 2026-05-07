@@ -68,16 +68,6 @@ export function createProjectStore(initial) {
     notify();
   }
 
-  function bumpVersionLabel() {
-    const v =
-      typeof state.version.version === 'string' ? state.version.version : '0.0.0';
-    state = {
-      ...state,
-      version: { version: bumpSemverPatch(v) },
-    };
-    notify();
-  }
-
   return {
     subscribe,
     getState,
@@ -88,15 +78,5 @@ export function createProjectStore(initial) {
     updateWiki,
     updateSuggestions,
     updateSettings,
-    bumpVersionLabel,
   };
-}
-
-function bumpSemverPatch(v) {
-  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v.trim());
-  if (!m) return `${v}-bumped`;
-  const major = Number(m[1]);
-  const minor = Number(m[2]);
-  const patch = Number(m[3]) + 1;
-  return `${major}.${minor}.${patch}`;
 }

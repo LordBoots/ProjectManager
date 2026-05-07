@@ -132,7 +132,7 @@ export default class Application {
    */
   async _runSync(store, persistence, layout) {
     layout.syncStatus.textContent = '';
-    persistence.saveImmediate();
+    persistence.saveImmediate({ skipUidBump: true });
     const parsed = parseRepoHint(store.getState().settings);
     if (!parsed) {
       layout.syncStatus.textContent = 'Set repository URL in Settings for remote version check.';
@@ -141,7 +141,7 @@ export default class Application {
     }
     try {
       const remote = await fetchRemoteVersion(parsed.versionUrl);
-      const local = store.getState().version?.version ?? '';
+      const local = store.getState().version?.uid ?? '';
       layout.syncStatus.textContent = buildSyncHintMessage(local, remote);
     } catch (e) {
       const msg = e && typeof e === 'object' && 'message' in e ? e.message : String(e);

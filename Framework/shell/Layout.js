@@ -32,7 +32,7 @@ export function createLayout({ developer, onSyncClick }) {
   const syncBtn = document.createElement('button');
   syncBtn.type = 'button';
   syncBtn.className = 'pm-sync-btn';
-  syncBtn.title = 'Check remote version and optionally replace local data folder';
+  syncBtn.title = 'Compare remote version.json snapshot id to local (updates on every save)';
   syncBtn.textContent = 'Sync data';
   if (onSyncClick) {
     syncBtn.addEventListener('click', () => onSyncClick());

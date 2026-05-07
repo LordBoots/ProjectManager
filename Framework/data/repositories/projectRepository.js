@@ -7,6 +7,9 @@ import {
   defaultSettings,
 } from '../schema/defaults.js';
 
+/** Same opaque id encoding as Framework/sync/remoteManifestSync for `{ version: semver }`. */
+const LEGACY_SEMVER_UID_PREFIX = 'legacy-semver:';
+
 const FILES = {
   version: 'version.json',
   mindmap: 'mindmap.json',
@@ -101,9 +104,13 @@ export function loadWikiJson(raw) {
 export function loadVersionJson(raw) {
   const d = defaultVersionFile();
   if (!raw || typeof raw !== 'object') return d;
-  return {
-    version: typeof raw.version === 'string' ? raw.version : String(raw.version ?? d.version),
-  };
+  if (typeof raw.uid === 'string' && raw.uid.trim().length > 0) {
+    return { uid: raw.uid.trim() };
+  }
+  if (typeof raw.version === 'string' && raw.version.trim().length > 0) {
+    return { uid: `${LEGACY_SEMVER_UID_PREFIX}${raw.version.trim()}` };
+  }
+  return d;
 }
 
 export function loadSettingsJson(raw) {

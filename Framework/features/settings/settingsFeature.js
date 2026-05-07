@@ -9,7 +9,7 @@ export function createSettingsFeature(ctx) {
   hint.className = 'pm-muted';
   hint.style.maxWidth = '520px';
   hint.textContent =
-    'Optional GitHub repo root for remote version check (uses raw.githubusercontent.com main branch). Replace local data from git manually; use Sync to reload from disk.';
+    'Optional GitHub repo root for remote snapshot check (raw.githubusercontent.com · main branch). version.json carries a rotating uid whenever data is saved; Sync compares ids without bumping yours. Merge via git then press Sync to reload from disk.';
 
   const lbl = document.createElement('div');
   lbl.className = 'pm-label';

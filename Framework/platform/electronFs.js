@@ -13,7 +13,7 @@ export function createFsAdapter() {
       isElectron: false,
       memory: mem,
       getProjectRoot: () => '.',
-      dataPath: (...parts) => ['data', ...parts].join('/'),
+      dataPath: (...parts) => ['Data', ...parts].join('/'),
       exists: (p) => Object.prototype.hasOwnProperty.call(mem, p),
       readFile: (p) => mem[p],
       writeFile: (p, txt) => {
@@ -31,7 +31,7 @@ export function createFsAdapter() {
   const root = api.getProjectRoot();
 
   function dataPath(...parts) {
-    return api.joinPath(root, 'data', ...parts);
+    return api.joinPath(root, 'Data', ...parts);
   }
 
   return {

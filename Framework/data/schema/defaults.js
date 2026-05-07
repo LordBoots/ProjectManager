@@ -1,4 +1,6 @@
-/** @typedef {{ version: string }} VersionFile */
+import { newDataUid } from '../../sync/dataUid.js';
+
+/** @typedef {{ uid: string }} VersionFile */
 
 /** @typedef {{ id: string, type: string, text?: string, src?: string, x: number, y: number, w: number, h: number, styles?: Record<string, unknown>, note?: boolean }} MindMapNode */
 
@@ -30,7 +32,7 @@
 
 export function defaultVersionFile() {
   /** @type {VersionFile} */
-  return { version: '0.0.0-local' };
+  return { uid: newDataUid() };
 }
 
 export function defaultMindMap() {
