@@ -1219,7 +1219,8 @@ export function createMindmapFeature(ctx) {
     const col = (k, fallback) => {
       const i = document.createElement("input");
       i.type = "color";
-      i.value = /^#/.test(cur[k] || "") ? cur[k] : fallback;
+      const v = styledValue(n, k, fallback);
+      i.value = /^#/.test(String(v || "")) ? String(v) : fallback;
       i.addEventListener("input", () => setk(k, i.value));
       return i;
     };
@@ -1282,6 +1283,7 @@ export function createMindmapFeature(ctx) {
       );
     } else if (n.type === "note" || isLabel(n)) {
       row("Size", mkSel(MM_FONT_SIZE_CHOICES, "fontSize", String(Number(cur.fontSize) || 16)));
+      if (isLabel(n)) row("Text", col("fontColor", LABEL_DEFAULT_FONT_COLOR));
       row(
         "Align",
         mkSel(

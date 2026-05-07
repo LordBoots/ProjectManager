@@ -7,16 +7,19 @@ export function createHomeFeature(ctx) {
   root.className = 'pm-home';
 
   const title = document.createElement('p');
-  title.className = 'pm-pane-title';
-  title.textContent = 'Overview';
+  title.className = 'pm-pane-title pm-home-overview-spacer';
+  title.setAttribute('aria-hidden', 'true');
 
   const hero = document.createElement('div');
   hero.className = 'pm-big-cards';
 
   const wikiTitle = document.createElement('p');
-  wikiTitle.className = 'pm-pane-title pm-muted';
+  wikiTitle.className = 'pm-pane-title pm-home-section-title';
   wikiTitle.style.marginTop = '1.5rem';
   wikiTitle.textContent = 'Wiki';
+
+  const wikiSeparator = document.createElement('div');
+  wikiSeparator.className = 'pm-home-section-separator';
 
   const wikiGrid = document.createElement('div');
   wikiGrid.className = 'pm-small-cards';
@@ -49,7 +52,7 @@ export function createHomeFeature(ctx) {
     ),
   );
 
-  root.append(title, hero, wikiTitle, wikiGrid);
+  root.append(title, hero, wikiTitle, wikiSeparator, wikiGrid);
 
   function render() {
     const { wiki } = ctx.store.getState();

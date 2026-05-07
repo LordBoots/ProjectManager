@@ -348,13 +348,37 @@ body {
   margin: 0 0 0.75rem;
 }
 
+.pm-home .pm-pane-title {
+  text-align: center;
+}
+
+.pm-home-overview-spacer {
+  min-height: 1.35rem;
+}
+
+.pm-home-section-title {
+  color: var(--pm-text);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.55rem;
+}
+
+.pm-home-section-separator {
+  width: min(86%, 920px);
+  height: 1px;
+  margin: 0 auto 1.15rem;
+  background: linear-gradient(90deg, transparent, var(--pm-border), var(--pm-accent), var(--pm-border), transparent);
+}
+
 .pm-muted {
   color: var(--pm-text-muted);
 }
 
 .pm-big-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 440px));
+  justify-content: center;
   gap: 1.25rem;
 }
 
@@ -385,7 +409,8 @@ body {
 
 .pm-small-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 240px));
+  justify-content: center;
   gap: 0.75rem;
   margin-top: 1rem;
 }
