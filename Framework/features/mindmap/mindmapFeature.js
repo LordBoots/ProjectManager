@@ -64,6 +64,9 @@ function defStyles() {
     imageTitleAlign: "center",
     textHasHeader: "",
     headerFontSize: "17",
+    labelIconEnabled: "",
+    labelIcon: "📌",
+    labelHideText: "",
   };
 }
 function stylesOf(n) {
@@ -967,9 +970,29 @@ export function createMindmapFeature(ctx) {
 
     if (isLabel(n)) {
       const align = s.textAlign || "left";
+      const hasLabelIcon = s.labelIconEnabled === "1";
+      const hideLabelText = s.labelHideText === "1";
+      const labelIcon = String(s.labelIcon || "📌").trim() || "📌";
+      const appendLabelIcon = (target) => {
+        if (!hasLabelIcon) return;
+        const icon = document.createElement("span");
+        icon.className = "pm-mm-label-icon";
+        const iconUrl = resolveWikiPageIconUrl(labelIcon);
+        if (iconUrl) {
+          const img = document.createElement("img");
+          img.src = iconUrl;
+          img.alt = "";
+          img.draggable = false;
+          icon.appendChild(img);
+        } else {
+          icon.textContent = labelIcon;
+        }
+        target.appendChild(icon);
+      };
       if (dev() && editing === n.id) {
         const wrap = document.createElement("div");
-        wrap.className = "pm-mm-node-inner";
+        wrap.className = "pm-mm-node-inner pm-mm-label-edit-inner";
+        wrap.style.alignItems = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
 
         const patchNode = (patch) => {
           ctx.store.updateMindmap((mm2) => {
@@ -980,6 +1003,7 @@ export function createMindmapFeature(ctx) {
           draw();
         };
 
+        appendLabelIcon(wrap);
         const ta = document.createElement("textarea");
         ta.className = "pm-mm-node-edit pm-mm-node-edit-single";
         ta.value = n.text ?? "";
@@ -1011,8 +1035,8 @@ export function createMindmapFeature(ctx) {
 
       const te = document.createElement("div");
       te.className = "pm-mm-node-text pm-mm-node-inner pm-mm-label-body";
-      te.textContent = n.text ?? "";
       te.style.textAlign = align;
+      te.style.alignItems = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
       te.style.whiteSpace = "pre-wrap";
       te.style.fontSize = (Number(s.fontSize) || 14) + "px";
       te.style.fontWeight = String(s.fontWeight || "500");
@@ -1020,6 +1044,13 @@ export function createMindmapFeature(ctx) {
       te.style.textDecoration = s.textDecoration || "none";
       te.style.color = styledValue(n, "fontColor", LABEL_DEFAULT_FONT_COLOR);
       te.style.lineHeight = "1.3";
+      appendLabelIcon(te);
+      if (!hideLabelText) {
+        const text = document.createElement("span");
+        text.className = "pm-mm-label-text";
+        text.textContent = n.text ?? "";
+        te.appendChild(text);
+      }
       w.appendChild(te);
       return;
     }
@@ -1356,7 +1387,63 @@ export function createMindmapFeature(ctx) {
       );
     } else if (n.type === "note" || isLabel(n)) {
       row("Size", mkSel(MM_FONT_SIZE_CHOICES, "fontSize", String(Number(cur.fontSize) || 16)));
-      if (isLabel(n)) row("Text", col("fontColor", LABEL_DEFAULT_FONT_COLOR));
+      if (isLabel(n)) {
+        row("Text", col("fontColor", LABEL_DEFAULT_FONT_COLOR));
+
+        const iconEnabled = document.createElement("input");
+        iconEnabled.type = "checkbox";
+        iconEnabled.checked = cur.labelIconEnabled === "1";
+        iconEnabled.addEventListener("change", () => {
+          setk("labelIconEnabled", iconEnabled.checked ? "1" : "");
+          rebuildStrip();
+        });
+        row("Icon", iconEnabled);
+
+        const iconControls = document.createElement("div");
+        iconControls.className = "pm-mm-label-icon-controls";
+        const iconInput = document.createElement("input");
+        iconInput.className = "pm-input pm-mm-label-icon-input";
+        iconInput.value = String(cur.labelIcon || "📌");
+        iconInput.placeholder = "📌 or image URL";
+        iconInput.title = "Use emoji/text, an http image URL, data:image, or img:file.png";
+        iconInput.disabled = cur.labelIconEnabled !== "1";
+        iconInput.addEventListener("change", () => setk("labelIcon", iconInput.value.trim() || "📌"));
+
+        const iconFile = document.createElement("input");
+        iconFile.type = "file";
+        iconFile.accept = "image/*";
+        iconFile.className = "pm-mm-add-file-input";
+        iconFile.tabIndex = -1;
+        iconFile.disabled = cur.labelIconEnabled !== "1";
+
+        const pickIcon = document.createElement("button");
+        pickIcon.type = "button";
+        pickIcon.className = "pm-btn";
+        pickIcon.textContent = "Pick";
+        pickIcon.disabled = cur.labelIconEnabled !== "1";
+        pickIcon.addEventListener("click", () => iconFile.click());
+        iconFile.addEventListener("change", () => {
+          const f = iconFile.files?.[0];
+          iconFile.value = "";
+          if (!f) return;
+          const fr = new FileReader();
+          fr.onload = () => {
+            const data = String(fr.result || "");
+            if (!data.startsWith("data:image")) return;
+            iconInput.value = data;
+            setk("labelIcon", data);
+          };
+          fr.readAsDataURL(f);
+        });
+        iconControls.append(iconInput, pickIcon, iconFile);
+        row("Icon pick", iconControls);
+
+        const hideText = document.createElement("input");
+        hideText.type = "checkbox";
+        hideText.checked = cur.labelHideText === "1";
+        hideText.addEventListener("change", () => setk("labelHideText", hideText.checked ? "1" : ""));
+        row("Hide text", hideText);
+      }
       row(
         "Align",
         mkSel(

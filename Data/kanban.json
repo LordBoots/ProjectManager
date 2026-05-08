@@ -16,6 +16,19 @@
               "done": false
             }
           ]
+        },
+        {
+          "id": "k-uov76e",
+          "title": "Card",
+          "icon": "⚙",
+          "description": "",
+          "subtasks": [
+            {
+              "id": "s1",
+              "label": "Task",
+              "done": false
+            }
+          ]
         }
       ]
     },

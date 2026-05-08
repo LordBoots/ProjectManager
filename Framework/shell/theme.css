@@ -1256,6 +1256,44 @@ tr.pm-wiki-table-row--flash {
 
 .pm-mm-label-body {
   line-height: 1.35;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.pm-mm-label-edit-inner {
+  justify-content: center;
+}
+
+.pm-mm-label-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  font-size: 1.45em;
+  line-height: 1;
+}
+
+.pm-mm-label-icon img {
+  display: block;
+  width: 1.65em;
+  height: 1.65em;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.pm-mm-label-text {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.pm-mm-label-icon-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pm-mm-label-icon-input {
+  width: 8rem;
 }
 
 .pm-mm-img-anchor-layer {
