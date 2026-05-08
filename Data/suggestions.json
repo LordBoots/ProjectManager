@@ -35,6 +35,24 @@
       "kind": "suggestion",
       "createdAt": "2026-05-07T21:47:56.519Z",
       "updatedAt": "2026-05-07T21:47:56.519Z"
+    },
+    {
+      "id": "sg-uppse2zxmox4tb5f",
+      "title": "Not Final (Prototype)",
+      "body": "Images here won't match the in-game UI until I have built it out fully.\n\nThe layouts will be very similar though and the themes will be kept as close as possible using my current elements. ",
+      "category": "Design",
+      "priority": "Low",
+      "status": "Pending",
+      "rejectionReason": "",
+      "targetRefs": [
+        {
+          "type": "mindmapNode",
+          "id": "n-jgx4sd"
+        }
+      ],
+      "kind": "devNote",
+      "createdAt": "2026-05-08T16:30:55.923Z",
+      "updatedAt": "2026-05-08T16:30:55.923Z"
     }
   ],
   "archived": []

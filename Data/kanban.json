@@ -5,26 +5,26 @@
       "title": "Todo",
       "cards": [
         {
-          "id": "k-9z3agw",
-          "title": "Card",
-          "icon": "⚙",
-          "description": "",
+          "id": "k-cvxmmw",
+          "title": "A card",
+          "icon": "",
+          "description": "That can be edited",
           "subtasks": [
             {
-              "id": "s1",
-              "label": "Task",
+              "id": "s-palvpb",
+              "label": "A task that can be aded",
               "done": false
             }
           ]
         },
         {
-          "id": "k-uov76e",
+          "id": "k-hthszj",
           "title": "Card",
           "icon": "⚙",
           "description": "",
           "subtasks": [
             {
-              "id": "s1",
+              "id": "s-b1ttv6",
               "label": "Task",
               "done": false
             }

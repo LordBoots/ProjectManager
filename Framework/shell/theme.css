@@ -992,6 +992,8 @@ tr.pm-wiki-table-row--flash {
   display: flex;
   gap: 1rem;
   align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
 }
 
 .pm-column {
@@ -1016,10 +1018,201 @@ tr.pm-wiki-table-row--flash {
   padding: 0.55rem;
   margin-bottom: 0.45rem;
   cursor: grab;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+.pm-k-card:hover {
+  border-color: var(--pm-accent);
+}
+
+.pm-k-card--expanded {
+  cursor: default;
+  border-color: color-mix(in srgb, var(--pm-accent) 55%, var(--pm-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pm-accent) 22%, transparent);
 }
 
 .pm-k-card.pm-highlight {
   box-shadow: 0 0 0 2px var(--pm-accent);
+}
+
+.pm-k-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.pm-k-card-drag {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--pm-text-muted);
+  cursor: grab;
+  font: inherit;
+  line-height: 1;
+  padding: 0.1rem 0.15rem;
+}
+
+.pm-k-card-drag:hover {
+  color: var(--pm-text);
+}
+
+.pm-k-card-drag:active {
+  cursor: grabbing;
+}
+
+.pm-k-card-icon {
+  flex: 0 0 auto;
+  width: 1.45rem;
+  height: 1.45rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--pm-radius-sm);
+  background: color-mix(in srgb, var(--pm-border) 15%, transparent);
+  line-height: 1;
+}
+
+.pm-k-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-k-card-desc {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pm-k-card-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.45rem;
+  padding: 0.4rem;
+  border-radius: var(--pm-radius-sm);
+  background: color-mix(in srgb, var(--pm-border) 6%, transparent);
+}
+
+.pm-k-card-task {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  color: var(--pm-text);
+  cursor: pointer;
+}
+
+.pm-k-card-task input {
+  flex: 0 0 auto;
+}
+
+.pm-k-card-task input:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.pm-k-card-task:has(input:disabled) {
+  cursor: default;
+}
+
+.pm-k-card-task-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pm-k-progress-wrap {
+  margin-top: 0.45rem;
+}
+
+.pm-k-progress-meta {
+  color: var(--pm-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
+}
+
+.pm-k-card-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.pm-k-card-editor-top {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pm-k-card-icon-input {
+  width: 3.25rem;
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+.pm-k-card-title-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.pm-k-card-description {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.pm-k-subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-sm);
+  background: color-mix(in srgb, var(--pm-border) 7%, transparent);
+}
+
+.pm-k-subtasks-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pm-k-subtasks-head strong {
+  font-size: 0.82rem;
+}
+
+.pm-k-subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pm-k-subtask-label {
+  min-width: 0;
+  flex: 1;
+}
+
+.pm-k-subtask-remove {
+  flex: 0 0 auto;
+  min-width: 1.75rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.pm-k-subtask-empty {
+  font-size: 0.8rem;
+}
+
+.pm-k-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pm-k-danger {
+  color: var(--pm-danger);
 }
 
 .pm-progress {

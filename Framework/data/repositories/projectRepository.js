@@ -84,9 +84,70 @@ export function loadMindmapJson(raw) {
 export function loadKanbanJson(raw) {
   const d = defaultKanban();
   if (!raw || typeof raw !== 'object') return d;
+  const columns = Array.isArray(raw.columns) ? raw.columns : d.columns;
+  const migratedColumns = columns.map((col) => {
+    if (!col || typeof col !== 'object') return col;
+    const cards = Array.isArray(/** @type {{ cards?: unknown }} */ (col).cards)
+      ? /** @type {{ cards: unknown[] }} */ (col).cards
+      : [];
+    return {
+      .../** @type {Record<string, unknown>} */ (col),
+      cards: cards.filter((card) => !isLegacyKanbanPlaceholderCard(card)).map(coerceKanbanCard),
+    };
+  });
   return {
-    columns: Array.isArray(raw.columns) ? raw.columns : d.columns,
+    columns: migratedColumns,
   };
+}
+
+/** @param {unknown} raw */
+function isLegacyKanbanPlaceholderCard(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const card = /** @type {{ title?: unknown, icon?: unknown, description?: unknown, subtasks?: unknown }} */ (raw);
+  const subtasks = Array.isArray(card.subtasks) ? card.subtasks : [];
+  if (subtasks.length !== 1) return false;
+  const task = subtasks[0];
+  if (!task || typeof task !== 'object' || Array.isArray(task)) return false;
+  const t = /** @type {{ id?: unknown, label?: unknown, done?: unknown }} */ (task);
+  return (
+    String(card.title ?? '') === 'Card' &&
+    String(card.icon ?? '') === '⚙' &&
+    String(card.description ?? '') === '' &&
+    String(t.id ?? '') === 's1' &&
+    String(t.label ?? '') === 'Task' &&
+    t.done === false
+  );
+}
+
+/** @param {unknown} raw */
+function coerceKanbanCard(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const card = /** @type {Record<string, unknown>} */ (raw);
+  const subtasks = Array.isArray(card.subtasks) ? card.subtasks : [];
+  return {
+    ...card,
+    title: typeof card.title === 'string' ? card.title : 'Untitled card',
+    icon: typeof card.icon === 'string' ? card.icon : '⚙',
+    description: typeof card.description === 'string' ? card.description : '',
+    subtasks: subtasks.map(coerceKanbanSubtask),
+  };
+}
+
+/** @param {unknown} raw */
+function coerceKanbanSubtask(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { id: newKanbanSubtaskId(), label: '', done: false };
+  }
+  const task = /** @type {{ id?: unknown, label?: unknown, done?: unknown }} */ (raw);
+  return {
+    id: typeof task.id === 'string' && task.id.trim() ? task.id.trim() : newKanbanSubtaskId(),
+    label: typeof task.label === 'string' ? task.label : '',
+    done: task.done === true,
+  };
+}
+
+function newKanbanSubtaskId() {
+  return `s-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function newWikiBlockId() {

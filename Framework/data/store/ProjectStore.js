@@ -44,11 +44,11 @@ export function createProjectStore(initial) {
     if (!opts || !opts.silent) notify();
   }
 
-  function updateKanban(mutator) {
+  function updateKanban(mutator, opts) {
     const k = deepClone(state.kanban);
     mutator(k);
     state = { ...state, kanban: k };
-    notify();
+    if (!opts || !opts.silent) notify();
   }
 
   function updateWiki(mutator) {
