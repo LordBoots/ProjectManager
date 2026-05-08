@@ -375,7 +375,10 @@ export function createMindmapFeature(ctx) {
     pendingImageAnchorPlace = null,
     editingFrameTitleId = null,
     editingFrameTitleDraft = "",
-    editingFrameTitleOriginal = "";
+    editingFrameTitleOriginal = "",
+    viewPersistTimer = 0,
+    edgePaintRaf = 0,
+    fullDrawRaf = 0;
 
   const root = document.createElement("div");
   root.className = "pm-mm-page";
@@ -397,6 +400,7 @@ export function createMindmapFeature(ctx) {
     width: PLANE_W + "px",
     height: PLANE_H + "px",
     transformOrigin: "0 0",
+    willChange: "transform",
   });
   const svg = document.createElementNS(NS, "svg");
   svg.classList.add("pm-svg-edges");
@@ -464,12 +468,44 @@ export function createMindmapFeature(ctx) {
     draw();
   }
   function persistV() {
+    if (viewPersistTimer) {
+      window.clearTimeout(viewPersistTimer);
+      viewPersistTimer = 0;
+    }
     ctx.store.updateMindmap((m) => {
       m.view = { x: vx, y: vy, scale: sc };
     });
   }
+  function schedulePersistV() {
+    if (viewPersistTimer) window.clearTimeout(viewPersistTimer);
+    viewPersistTimer = window.setTimeout(() => {
+      viewPersistTimer = 0;
+      ctx.store.updateMindmap((m) => {
+        m.view = { x: vx, y: vy, scale: sc };
+      });
+    }, 160);
+  }
   function tf() {
     plane.style.transform = `translate(${vx}px,${vy}px) scale(${sc})`;
+  }
+  function paintEdgesAndHints() {
+    drawEdges();
+    drawEdgesOverlay();
+    syncLinkDropHint();
+  }
+  function scheduleEdgesAndHints() {
+    if (edgePaintRaf) return;
+    edgePaintRaf = requestAnimationFrame(() => {
+      edgePaintRaf = 0;
+      paintEdgesAndHints();
+    });
+  }
+  function scheduleDraw() {
+    if (fullDrawRaf) return;
+    fullDrawRaf = requestAnimationFrame(() => {
+      fullDrawRaf = 0;
+      draw();
+    });
   }
   function planeFromClient(cx, cy) {
     const r = inner.getBoundingClientRect();
@@ -2332,7 +2368,7 @@ export function createMindmapFeature(ctx) {
       vy = my - ((my - vy) / sc) * ns;
       sc = ns;
       tf();
-      persistV();
+      schedulePersistV();
     },
     { passive: false }
   );
@@ -2433,9 +2469,7 @@ export function createMindmapFeature(ctx) {
             linkDraft.hoverImageAnchorCandidate = { nx: norm.nx, ny: norm.ny };
         }
       }
-      drawEdges();
-      drawEdgesOverlay();
-      syncLinkDropHint();
+      scheduleEdgesAndHints();
     }
     if (boxSel) {
       const r = inner.getBoundingClientRect();
@@ -2452,7 +2486,7 @@ export function createMindmapFeature(ctx) {
       vx = dragP.vx + (ev.clientX - dragP.sx);
       vy = dragP.vy + (ev.clientY - dragP.sy);
       tf();
-      persistV();
+      schedulePersistV();
       return;
     }
     if (!dev()) return;
@@ -2469,8 +2503,8 @@ export function createMindmapFeature(ctx) {
           fr.w = nw;
           fr.h = nh;
         }
-      });
-      draw();
+      }, { silent: true });
+      scheduleDraw();
       return;
     }
 
@@ -2495,8 +2529,8 @@ export function createMindmapFeature(ctx) {
             tgt.y = SF(po.y + dy);
           }
         }
-      });
-      draw();
+      }, { silent: true });
+      scheduleDraw();
       return;
     }
 
@@ -2511,8 +2545,8 @@ export function createMindmapFeature(ctx) {
             c.y = SF(pos.y + dy);
           }
         }
-      });
-      draw();
+      }, { silent: true });
+      scheduleDraw();
       return;
     }
     if (dragR) {
@@ -2530,8 +2564,8 @@ export function createMindmapFeature(ctx) {
         nh = SF(nh);
         c.w = nw;
         c.h = nh;
-      });
-      draw();
+      }, { silent: true });
+      scheduleDraw();
     }
   });
 
@@ -2602,10 +2636,22 @@ export function createMindmapFeature(ctx) {
         draw();
       }
       dragN = dragP = dragR = dragF = dragFR = null;
-      persistV();
-
-      if ((hadDragNodes || hadFrameResize || hadDragFrame) && dev())
-        ctx.store.updateMindmap((m) => reconcileFrameMembership(m));
+      if (fullDrawRaf) {
+        cancelAnimationFrame(fullDrawRaf);
+        fullDrawRaf = 0;
+      }
+      if ((hadDragNodes || hadFrameResize || hadDragFrame) && dev()) {
+        if (viewPersistTimer) {
+          window.clearTimeout(viewPersistTimer);
+          viewPersistTimer = 0;
+        }
+        ctx.store.updateMindmap((m) => {
+          m.view = { x: vx, y: vy, scale: sc };
+          reconcileFrameMembership(m);
+        });
+      } else {
+        persistV();
+      }
     },
     true
   );
@@ -2928,6 +2974,19 @@ export function createMindmapFeature(ctx) {
       draw();
     },
     unmount() {
+      if (viewPersistTimer) {
+        window.clearTimeout(viewPersistTimer);
+        viewPersistTimer = 0;
+        persistV();
+      }
+      if (edgePaintRaf) {
+        cancelAnimationFrame(edgePaintRaf);
+        edgePaintRaf = 0;
+      }
+      if (fullDrawRaf) {
+        cancelAnimationFrame(fullDrawRaf);
+        fullDrawRaf = 0;
+      }
       unsub();
     },
   };
