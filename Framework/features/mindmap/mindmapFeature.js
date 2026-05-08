@@ -10,6 +10,7 @@ const WIKI_LINK_NODE_W = 200;
 const WIKI_LINK_NODE_H = 76;
 const LABEL_NODE_W = 120;
 const LABEL_NODE_H = 44;
+const LINK_POINT_NODE_SIZE = 22;
 const FRAME_INNER_PAD = 10;
 const FRAME_CREATE_PAD = 28;
 const IMAGE_MIN_W = 64;
@@ -81,16 +82,21 @@ function isWikiLink(n) {
 function isLabel(n) {
   return String(n.type) === "label";
 }
+function isLinkPoint(n) {
+  return String(n.type) === "linkPoint";
+}
 /** paintShell uses 14px top border when topBand is set; other sides stay 2px — border-box shrinks wiki body by this amount without extra outer height. */
 const WIKI_TOP_BAND_EXTRA_H = 14 - 2;
 function defaultNodeW(n) {
   if (isWikiLink(n)) return WIKI_LINK_NODE_W;
   if (isLabel(n)) return LABEL_NODE_W;
+  if (isLinkPoint(n)) return LINK_POINT_NODE_SIZE;
   return 140;
 }
 function defaultNodeH(n) {
   if (isWikiLink(n)) return WIKI_LINK_NODE_H;
   if (isLabel(n)) return LABEL_NODE_H;
+  if (isLinkPoint(n)) return LINK_POINT_NODE_SIZE;
   return 80;
 }
 function storedNodeW(n) {
@@ -135,6 +141,9 @@ function rejectsMindmapEdges(n) {
 }
 function mindmapAllowsEdge(a, b) {
   return !!(a && b && !rejectsMindmapEdges(a) && !rejectsMindmapEdges(b));
+}
+function mindmapEdgeHasArrow(_from, to) {
+  return !isLinkPoint(to);
 }
 
 const MM_EDGE_CLIP_EPS = 1e-6;
@@ -273,6 +282,13 @@ function paintShell(el, n) {
     el.style.borderTopColor = s.borderColor;
   }
   el.style.boxShadow = s.shadow === "1" ? "0 8px 20px rgba(0,0,0,0.12)" : "none";
+  if (isLinkPoint(n)) {
+    el.style.backgroundColor = styledValue(n, "bg", "#6c8cff");
+    el.style.borderRadius = "999px";
+    el.style.borderColor = styledValue(n, "borderColor", "#ffffff");
+    el.style.borderTopColor = styledValue(n, "borderColor", "#ffffff");
+    el.style.boxShadow = "0 0 0 1px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.22)";
+  }
 }
 
 function nodeCenter(n) {
@@ -680,7 +696,7 @@ export function createMindmapFeature(ctx) {
       vis.setAttribute("y2", String(yb));
       vis.setAttribute("stroke", selected ? "#6c8cff" : "#7d869a");
       vis.setAttribute("stroke-width", selected ? "3" : "2");
-      vis.setAttribute("marker-end", `url(#pm-mm-arrow-end${selected ? "-sel" : ""})`);
+      if (mindmapEdgeHasArrow(A, B)) vis.setAttribute("marker-end", `url(#pm-mm-arrow-end${selected ? "-sel" : ""})`);
       svg.appendChild(hit);
       svg.appendChild(vis);
       hit.addEventListener("mousedown", (ev) => {
@@ -802,6 +818,12 @@ export function createMindmapFeature(ctx) {
   function fillBody(w, n) {
     w.replaceChildren();
     const s = stylesOf(n);
+    if (isLinkPoint(n)) {
+      const dot = document.createElement("div");
+      dot.className = "pm-mm-link-point-dot";
+      w.appendChild(dot);
+      return;
+    }
     if (n.type === "wikiLink") {
       const wrap = document.createElement("div");
       wrap.className = "pm-mm-wikilink-inner pm-mm-node-inner";
@@ -1632,6 +1654,7 @@ export function createMindmapFeature(ctx) {
       ["text", "Text"],
       ["note", "Note"],
       ["label", "Label"],
+      ["linkPoint", "Link point"],
       ["image", "Image"],
       ["wikiLink", "Wiki link"],
     ]) {
@@ -2023,7 +2046,8 @@ export function createMindmapFeature(ctx) {
         (String(n.type) === "image" ? " pm-mm-node-image" : "") +
         (isNote(n) ? " pm-mm-node-note" : "") +
         (isWikiLink(n) ? " pm-mm-node-wikilink" : "") +
-        (isLabel(n) ? " pm-mm-node-label" : "");
+        (isLabel(n) ? " pm-mm-node-label" : "") +
+        (isLinkPoint(n) ? " pm-mm-node-link-point" : "");
       pad.style.left = +n.x + "px";
       pad.style.top = +n.y + "px";
       pad.style.width = storedNodeW(n) + "px";
@@ -2148,6 +2172,7 @@ export function createMindmapFeature(ctx) {
       pad.addEventListener("dblclick", (ev) => {
         if (!dev()) return;
         if (isWikiLink(n)) return;
+        if (isLinkPoint(n)) return;
         ev.stopPropagation();
         if (n.type === "text") {
           mut();
@@ -2215,7 +2240,7 @@ export function createMindmapFeature(ctx) {
       });
 
       if (dev() && sel.size === 1 && sel.has(n.id) && !rejectsMindmapEdges(n)) {
-        for (const side of ["n", "e", "s", "w"]) {
+        for (const side of isLinkPoint(n) ? ["c"] : ["n", "e", "s", "w"]) {
           const prt = document.createElement("div");
           prt.className = "pm-mm-link-port pm-mm-link-port--" + side;
           prt.addEventListener("mousedown", (ev) => {
@@ -2225,7 +2250,7 @@ export function createMindmapFeature(ctx) {
               h = +n.h || 80,
               x = +n.x,
               y = +n.y;
-            const o = { n: [x + w / 2, y], e: [x + w, y + h / 2], s: [x + w / 2, y + h], w: [x, y + h / 2] };
+            const o = { c: [x + w / 2, y + h / 2], n: [x + w / 2, y], e: [x + w, y + h / 2], s: [x + w / 2, y + h], w: [x, y + h / 2] };
             const xy = o[side];
             linkDraft = { fromNodeId: n.id, x1: xy[0], y1: xy[1], x2: xy[0], y2: xy[1], hoverTargetId: null };
             drawEdges();
@@ -2236,7 +2261,7 @@ export function createMindmapFeature(ctx) {
         }
       }
 
-      if (dev() && sel.size === 1 && sel.has(n.id) && !isWikiLink(n)) {
+      if (dev() && sel.size === 1 && sel.has(n.id) && !isWikiLink(n) && !isLinkPoint(n)) {
         const h = document.createElement("div");
         h.className = "pm-mm-resize-h";
         h.addEventListener("mousedown", (ev) => {
@@ -2762,6 +2787,7 @@ export function createMindmapFeature(ctx) {
           if (type === "image") node = { id, type: "image", text: "Caption", src, x: 100, y: 100, w: 200, h: 140, styles: {} };
           else if (type === "note") node = { id, type: "note", text: "Note", x: 100, y: 100, w: 96, h: 44, styles: {} };
           else if (type === "label") node = { id, type: "label", text: "Label", x: 100, y: 100, w: LABEL_NODE_W, h: LABEL_NODE_H, styles: {} };
+          else if (type === "linkPoint") node = { id, type: "linkPoint", text: "", x: 100, y: 100, w: LINK_POINT_NODE_SIZE, h: LINK_POINT_NODE_SIZE, styles: {} };
           else if (type === "wikiLink") {
             const ttl = typeof wikiTitle === "string" && wikiTitle.trim() ? wikiTitle.trim() : "Wiki";
             node = {
