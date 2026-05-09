@@ -507,6 +507,24 @@ export function createMindmapFeature(ctx) {
       draw();
     });
   }
+  function nodeDragPositions(drag, clientX, clientY) {
+    const SF = snapFn();
+    const dx = (clientX - drag.cx) / sc,
+      dy = (clientY - drag.cy) / sc;
+    const next = new Map();
+    for (const [id, pos] of drag.orig) {
+      next.set(id, { x: SF(pos.x + dx), y: SF(pos.y + dy) });
+    }
+    return next;
+  }
+  function paintLiveNodeDrag(drag, next) {
+    for (const [id, pos] of next) {
+      const el = drag.els?.get(id);
+      if (!(el instanceof HTMLElement)) continue;
+      el.style.left = pos.x + "px";
+      el.style.top = pos.y + "px";
+    }
+  }
   function planeFromClient(cx, cy) {
     const r = inner.getBoundingClientRect();
     return { x: (cx - r.left - vx) / sc, y: (cy - r.top - vy) / sc };
@@ -2180,11 +2198,16 @@ export function createMindmapFeature(ctx) {
         }
         mut();
         const dragOrig = new Map();
+        const dragEls = new Map();
         for (const sid of sel) {
           const pn = (mm().nodes || []).find((z) => z.id === sid);
-          if (pn) dragOrig.set(sid, { x: +pn.x, y: +pn.y });
+          if (pn) {
+            dragOrig.set(sid, { x: +pn.x, y: +pn.y });
+            const dragEl = plane.querySelector(`[data-node-id="${CSS.escape(sid)}"]`);
+            if (dragEl instanceof HTMLElement) dragEls.set(sid, dragEl);
+          }
         }
-        dragN = { cx: ev.clientX, cy: ev.clientY, orig: dragOrig };
+        dragN = { cx: ev.clientX, cy: ev.clientY, orig: dragOrig, els: dragEls };
       });
 
       pad.addEventListener("contextmenu", (ev) => {
@@ -2535,18 +2558,8 @@ export function createMindmapFeature(ctx) {
     }
 
     if (dragN) {
-      const dx = (ev.clientX - dragN.cx) / sc,
-        dy = (ev.clientY - dragN.cy) / sc;
-      ctx.store.updateMindmap((mm2) => {
-        for (const [id, pos] of dragN.orig) {
-          const c = (mm2.nodes || []).find((z) => z.id === id);
-          if (c) {
-            c.x = SF(pos.x + dx);
-            c.y = SF(pos.y + dy);
-          }
-        }
-      }, { silent: true });
-      scheduleDraw();
+      dragN.next = nodeDragPositions(dragN, ev.clientX, ev.clientY);
+      paintLiveNodeDrag(dragN, dragN.next);
       return;
     }
     if (dragR) {
@@ -2572,6 +2585,7 @@ export function createMindmapFeature(ctx) {
   window.addEventListener(
     "mouseup",
     (ev) => {
+      const nodeDrag = dragN;
       const hadDragNodes = !!dragN;
       const hadFrameResize = !!dragFR;
       const hadDragFrame = !!dragF;
@@ -2647,6 +2661,17 @@ export function createMindmapFeature(ctx) {
         }
         ctx.store.updateMindmap((m) => {
           m.view = { x: vx, y: vy, scale: sc };
+          if (nodeDrag) {
+            const next = nodeDrag.next || nodeDragPositions(nodeDrag, ev.clientX, ev.clientY);
+            const nm = new Map((m.nodes || []).map((nn) => [nn.id, nn]));
+            for (const [id, pos] of next) {
+              const nn = nm.get(id);
+              if (nn) {
+                nn.x = pos.x;
+                nn.y = pos.y;
+              }
+            }
+          }
           reconcileFrameMembership(m);
         });
       } else {
