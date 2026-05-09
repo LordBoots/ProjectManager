@@ -149,6 +149,9 @@ function mindmapAllowsEdge(a, b) {
 function mindmapEdgeHasArrow(_from, to) {
   return !isLinkPoint(to);
 }
+function mindmapEdgeHasStartArrow(edge, from) {
+  return edge?.bidirectional === true && !isLinkPoint(from);
+}
 
 const MM_EDGE_CLIP_EPS = 1e-6;
 
@@ -610,6 +613,12 @@ export function createMindmapFeature(ctx) {
     const e = (mm().edges || []).find((x) => x.id === id);
     return e && e.imageAnchorId ? e : null;
   }
+  function selectedNormalLinkEdge() {
+    if (editing !== null || selEdges.size !== 1) return null;
+    const id = [...selEdges][0];
+    const e = (mm().edges || []).find((x) => x.id === id);
+    return e && !e.imageAnchorId ? e : null;
+  }
   function syncImageNodeNaturalSize(nodeId, img) {
     const iw = img.naturalWidth || 0,
       ih = img.naturalHeight || 0;
@@ -718,24 +727,26 @@ export function createMindmapFeature(ctx) {
     const edgeWSelected = selectedLinkThickness(edgeW);
     const markerScale = linkMarkerScale(edgeW);
     const defs = document.createElementNS(NS, "defs");
-    function mkMarker(id, fill) {
+    function mkMarker(id, fill, dir = "end") {
       const marker = document.createElementNS(NS, "marker");
       marker.setAttribute("id", id);
       marker.setAttribute("markerUnits", "userSpaceOnUse");
       marker.setAttribute("markerWidth", String(10 * markerScale));
       marker.setAttribute("markerHeight", String(9 * markerScale));
-      marker.setAttribute("refX", "10");
+      marker.setAttribute("refX", dir === "start" ? "0" : "10");
       marker.setAttribute("refY", "4.5");
       marker.setAttribute("orient", "auto");
       marker.setAttribute("viewBox", "0 0 10 9");
       const arrowPath = document.createElementNS(NS, "path");
-      arrowPath.setAttribute("d", "M 10 4.5 L 0 0 L 0 9 Z");
+      arrowPath.setAttribute("d", dir === "start" ? "M 0 4.5 L 10 0 L 10 9 Z" : "M 10 4.5 L 0 0 L 0 9 Z");
       arrowPath.setAttribute("fill", fill);
       marker.appendChild(arrowPath);
       defs.appendChild(marker);
     }
     mkMarker("pm-mm-arrow-end", "#7d869a");
     mkMarker("pm-mm-arrow-end-sel", "#6c8cff");
+    mkMarker("pm-mm-arrow-start", "#7d869a", "start");
+    mkMarker("pm-mm-arrow-start-sel", "#6c8cff", "start");
     svg.appendChild(defs);
 
     const M = mm(),
@@ -766,6 +777,7 @@ export function createMindmapFeature(ctx) {
       vis.setAttribute("y2", String(yb));
       vis.setAttribute("stroke", selected ? "#6c8cff" : "#7d869a");
       vis.setAttribute("stroke-width", String(selected ? edgeWSelected : edgeW));
+      if (mindmapEdgeHasStartArrow(e, A)) vis.setAttribute("marker-start", `url(#pm-mm-arrow-start${selected ? "-sel" : ""})`);
       if (mindmapEdgeHasArrow(A, B)) vis.setAttribute("marker-end", `url(#pm-mm-arrow-end${selected ? "-sel" : ""})`);
       svg.appendChild(hit);
       svg.appendChild(vis);
@@ -1344,10 +1356,12 @@ export function createMindmapFeature(ctx) {
   function rebuildStrip() {
     strip.replaceChildren();
     const selectedLabelLink = selectedLabelLinkEdge();
-    const on = editing !== null || !!selectedLabelLink;
+    const selectedNormalLink = selectedNormalLinkEdge();
+    const on = editing !== null || !!selectedLabelLink || !!selectedNormalLink;
     strip.classList.toggle("pm-mm-styles-visible", on);
     if (!on) return;
-    if (selectedLabelLink) {
+    if (selectedLabelLink || selectedNormalLink) {
+      const selectedLink = selectedLabelLink || selectedNormalLink;
       const row = (lab, el) => {
         const r = document.createElement("div");
         r.className = "pm-mm-style-field";
@@ -1356,17 +1370,32 @@ export function createMindmapFeature(ctx) {
         r.append(l, el);
         strip.appendChild(r);
       };
-      const lineColor = document.createElement("input");
-      lineColor.type = "color";
-      lineColor.value = colorValue(selectedLabelLink.color, DEFAULT_EDGE_COLOR);
-      lineColor.addEventListener("input", () => {
-        ctx.store.updateMindmap((m) => {
-          const e = (m.edges || []).find((x) => x.id === selectedLabelLink.id);
-          if (e) e.color = lineColor.value;
+      if (selectedLabelLink) {
+        const lineColor = document.createElement("input");
+        lineColor.type = "color";
+        lineColor.value = colorValue(selectedLabelLink.color, DEFAULT_EDGE_COLOR);
+        lineColor.addEventListener("input", () => {
+          ctx.store.updateMindmap((m) => {
+            const e = (m.edges || []).find((x) => x.id === selectedLink.id);
+            if (e) e.color = lineColor.value;
+          });
+          draw();
         });
-        draw();
-      });
-      row("Line", lineColor);
+        row("Line", lineColor);
+      }
+      if (selectedNormalLink) {
+        const bidir = document.createElement("input");
+        bidir.type = "checkbox";
+        bidir.checked = selectedNormalLink.bidirectional === true;
+        bidir.addEventListener("change", () => {
+          ctx.store.updateMindmap((m) => {
+            const e = (m.edges || []).find((x) => x.id === selectedLink.id);
+            if (e) e.bidirectional = bidir.checked;
+          });
+          draw();
+        });
+        row("Bidirectional", bidir);
+      }
       const done = document.createElement("button");
       done.type = "button";
       done.className = "pm-btn";
@@ -2928,6 +2957,7 @@ export function createMindmapFeature(ctx) {
             toNodeId: idMap.get(ed.toNodeId),
             ...(ed.imageAnchorId ? { imageAnchorId: ed.imageAnchorId } : {}),
             ...(ed.color ? { color: ed.color } : {}),
+            ...(ed.bidirectional === true ? { bidirectional: true } : {}),
           });
         }
         mm2.edges = [...(mm2.edges || []), ...more];
@@ -2980,6 +3010,7 @@ export function createMindmapFeature(ctx) {
               toNodeId: b,
               ...(e.imageAnchorId ? { imageAnchorId: e.imageAnchorId } : {}),
               ...(e.color ? { color: e.color } : {}),
+              ...(e.bidirectional === true ? { bidirectional: true } : {}),
             };
           })
           .filter(Boolean);

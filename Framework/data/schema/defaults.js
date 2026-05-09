@@ -4,7 +4,7 @@ import { newDataUid } from '../../sync/dataUid.js';
 
 /** @typedef {{ id: string, type: string, text?: string, header?: string, src?: string, wikiPageId?: string, x: number, y: number, w: number, h: number, styles?: Record<string, unknown>, note?: boolean }} MindMapNode */
 
-/** @typedef {{ id: string, fromNodeId: string, toNodeId: string }} MindMapEdge */
+/** @typedef {{ id: string, fromNodeId: string, toNodeId: string, imageAnchorId?: string, color?: string, bidirectional?: boolean }} MindMapEdge */
 
 /** @typedef {{ id: string, x: number, y: number, w: number, h: number, memberIds: string[], title?: string }} MindMapFrame */
 
