@@ -126,6 +126,10 @@ function styledValue(n, key, fallback) {
 function colorValue(v, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(v || "")) ? String(v) : fallback;
 }
+function numberInRange(v, fallback, min, max) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+}
 function wikiTopBandExtraH(n) {
   return isWikiLink(n) && stylesOf(n).topBand ? WIKI_TOP_BAND_EXTRA_H : 0;
 }
@@ -507,6 +511,15 @@ export function createMindmapFeature(ctx) {
       draw();
     });
   }
+  function linkThickness() {
+    return numberInRange(ctx.store.getState().settings?.mindmapLinkThickness, 2, 1, 8);
+  }
+  function selectedLinkThickness(base) {
+    return base + Math.max(1, base * 0.35);
+  }
+  function linkMarkerScale(base) {
+    return Math.max(0.55, base / 2);
+  }
   function nodeDragPositions(drag, clientX, clientY) {
     const SF = snapFn();
     const dx = (clientX - drag.cx) / sc,
@@ -701,13 +714,16 @@ export function createMindmapFeature(ctx) {
   function drawEdges() {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
+    const edgeW = linkThickness();
+    const edgeWSelected = selectedLinkThickness(edgeW);
+    const markerScale = linkMarkerScale(edgeW);
     const defs = document.createElementNS(NS, "defs");
     function mkMarker(id, fill) {
       const marker = document.createElementNS(NS, "marker");
       marker.setAttribute("id", id);
       marker.setAttribute("markerUnits", "userSpaceOnUse");
-      marker.setAttribute("markerWidth", "10");
-      marker.setAttribute("markerHeight", "9");
+      marker.setAttribute("markerWidth", String(10 * markerScale));
+      marker.setAttribute("markerHeight", String(9 * markerScale));
       marker.setAttribute("refX", "10");
       marker.setAttribute("refY", "4.5");
       marker.setAttribute("orient", "auto");
@@ -740,7 +756,7 @@ export function createMindmapFeature(ctx) {
       hit.setAttribute("y2", String(yb));
       hit.setAttribute("stroke", "#303030");
       hit.setAttribute("stroke-opacity", "0");
-      hit.setAttribute("stroke-width", "20");
+      hit.setAttribute("stroke-width", String(Math.max(20, edgeW * 6)));
       hit.setAttribute("stroke-linecap", "round");
       const vis = document.createElementNS(NS, "line");
       vis.setAttribute("pointer-events", "none");
@@ -749,7 +765,7 @@ export function createMindmapFeature(ctx) {
       vis.setAttribute("x2", String(xb));
       vis.setAttribute("y2", String(yb));
       vis.setAttribute("stroke", selected ? "#6c8cff" : "#7d869a");
-      vis.setAttribute("stroke-width", selected ? "3" : "2");
+      vis.setAttribute("stroke-width", String(selected ? edgeWSelected : edgeW));
       if (mindmapEdgeHasArrow(A, B)) vis.setAttribute("marker-end", `url(#pm-mm-arrow-end${selected ? "-sel" : ""})`);
       svg.appendChild(hit);
       svg.appendChild(vis);
@@ -778,7 +794,7 @@ export function createMindmapFeature(ctx) {
       dl.setAttribute("x2", String(linkDraft.x2));
       dl.setAttribute("y2", String(linkDraft.y2));
       dl.setAttribute("stroke", "#6c8cff");
-      dl.setAttribute("stroke-width", "3");
+      dl.setAttribute("stroke-width", String(edgeWSelected));
       dl.setAttribute("stroke-dasharray", "8 5");
       svg.appendChild(dl);
     }
@@ -786,13 +802,16 @@ export function createMindmapFeature(ctx) {
 
   function drawEdgesOverlay() {
     while (svgEdgesOverlay.firstChild) svgEdgesOverlay.removeChild(svgEdgesOverlay.firstChild);
+    const edgeW = linkThickness();
+    const edgeWSelected = selectedLinkThickness(edgeW);
+    const markerScale = linkMarkerScale(edgeW);
     const defs = document.createElementNS(NS, "defs");
     function mkMarker(id, fill) {
       const marker = document.createElementNS(NS, "marker");
       marker.setAttribute("id", id);
       marker.setAttribute("markerUnits", "userSpaceOnUse");
-      marker.setAttribute("markerWidth", "10");
-      marker.setAttribute("markerHeight", "9");
+      marker.setAttribute("markerWidth", String(10 * markerScale));
+      marker.setAttribute("markerHeight", String(9 * markerScale));
       marker.setAttribute("refX", "10");
       marker.setAttribute("refY", "4.5");
       marker.setAttribute("orient", "auto");
@@ -831,7 +850,7 @@ export function createMindmapFeature(ctx) {
       vis.setAttribute("x2", String(xb));
       vis.setAttribute("y2", String(yb));
       vis.setAttribute("stroke", edgeColor);
-      vis.setAttribute("stroke-width", selected ? "3" : "2");
+      vis.setAttribute("stroke-width", String(selected ? edgeWSelected : edgeW));
       vis.setAttribute("marker-end", `url(#${markerId})`);
       svgEdgesOverlay.appendChild(vis);
       if (!dev() || !sel.has(B.id)) continue;
@@ -840,10 +859,10 @@ export function createMindmapFeature(ctx) {
       handle.setAttribute("pointer-events", "all");
       handle.setAttribute("cx", String((xa + xb) / 2));
       handle.setAttribute("cy", String((ya + yb) / 2));
-      handle.setAttribute("r", selected ? "7" : "5");
+      handle.setAttribute("r", String(selected ? Math.max(7, edgeW * 2.25) : Math.max(5, edgeW * 1.7)));
       handle.setAttribute("fill", selected ? "#ffffff" : edgeColor);
       handle.setAttribute("stroke", selected ? "#6c8cff" : "#ffffff");
-      handle.setAttribute("stroke-width", selected ? "3" : "2");
+      handle.setAttribute("stroke-width", String(selected ? edgeWSelected : edgeW));
       handle.style.cursor = "pointer";
       const title = document.createElementNS(NS, "title");
       title.textContent = "Edit label link";

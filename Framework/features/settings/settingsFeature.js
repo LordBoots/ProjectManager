@@ -1,5 +1,9 @@
 export function createSettingsFeature(ctx) {
   const root = document.createElement('div');
+  const numberInRange = (v, fallback, min, max) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  };
 
   const title = document.createElement('p');
   title.className = 'pm-pane-title';
@@ -30,6 +34,31 @@ export function createSettingsFeature(ctx) {
   branchInput.placeholder = 'main';
   branchInput.value = ctx.store.getState().settings?.remoteGithubBranch || '';
 
+  const mmTitle = document.createElement('p');
+  mmTitle.className = 'pm-pane-title';
+  mmTitle.style.marginTop = '1.25rem';
+  mmTitle.textContent = 'Mind map';
+
+  const linkThicknessLbl = document.createElement('div');
+  linkThicknessLbl.className = 'pm-label';
+  linkThicknessLbl.textContent = 'Link thickness';
+
+  const linkThicknessRow = document.createElement('div');
+  linkThicknessRow.className = 'pm-toolbar';
+  linkThicknessRow.style.marginBottom = '0';
+
+  const linkThickness = document.createElement('input');
+  linkThickness.type = 'range';
+  linkThickness.min = '1';
+  linkThickness.max = '8';
+  linkThickness.step = '0.5';
+  linkThickness.value = String(numberInRange(ctx.store.getState().settings?.mindmapLinkThickness, 2, 1, 8));
+
+  const linkThicknessValue = document.createElement('span');
+  linkThicknessValue.className = 'pm-muted';
+  linkThicknessValue.textContent = `${linkThickness.value}px`;
+  linkThicknessRow.append(linkThickness, linkThicknessValue);
+
   let tid = null;
   function debounceSettings(mut) {
     clearTimeout(tid);
@@ -52,7 +81,15 @@ export function createSettingsFeature(ctx) {
     });
   });
 
-  root.append(title, hint, lbl, input, lblBr, branchInput);
+  linkThickness.addEventListener('input', () => {
+    const v = Number(linkThickness.value);
+    linkThicknessValue.textContent = `${v}px`;
+    debounceSettings((s) => {
+      s.mindmapLinkThickness = v;
+    });
+  });
+
+  root.append(title, hint, lbl, input, lblBr, branchInput, mmTitle, linkThicknessLbl, linkThicknessRow);
 
   return {
     root,

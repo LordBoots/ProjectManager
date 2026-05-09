@@ -38,7 +38,7 @@ import { newDataUid } from '../../sync/dataUid.js';
  * @typedef {{ type: 'mindmapNode'|'kanbanCard'|'wikiPage'|'wikiBlock'|'wikiTableRow', id: string }} EntityRef
  */
 
-/** @typedef {{ remoteRepoHint?: string, remoteGithubBranch?: string }} AppSettings */
+/** @typedef {{ remoteRepoHint?: string, remoteGithubBranch?: string, mindmapLinkThickness?: number|string }} AppSettings */
 
 export function defaultVersionFile() {
   /** @type {VersionFile} */
@@ -108,5 +108,6 @@ export function defaultSettings() {
   return {
     remoteRepoHint: '',
     remoteGithubBranch: '',
+    mindmapLinkThickness: 2,
   };
 }
