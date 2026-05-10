@@ -1623,6 +1623,71 @@ export function createMindmapFeature(ctx) {
 
       row("Caption", capInp);
 
+      const imgSrcUrl = document.createElement("input");
+      imgSrcUrl.type = "text";
+      imgSrcUrl.className = "pm-input";
+      imgSrcUrl.placeholder = "https://… or leave as embedded";
+      const srcStr = typeof n.src === "string" ? n.src.trim() : "";
+      imgSrcUrl.value =
+        !srcStr
+          ? ""
+          : /^https?:\/\//i.test(srcStr)
+            ? srcStr
+            : srcStr.startsWith("data:")
+              ? ""
+              : srcStr.length > 120
+                ? srcStr.slice(0, 120) + "…"
+                : srcStr;
+      imgSrcUrl.title = srcStr.startsWith("data:") ? "Current image is embedded (file). Choose a new file or paste a URL." : "";
+      imgSrcUrl.addEventListener("change", () => {
+        const v = imgSrcUrl.value.trim();
+        if (!v) return;
+        mut();
+        ctx.store.updateMindmap((m2) => {
+          const o = (m2.nodes || []).find((z) => z.id === editing);
+          if (!o || String(o.type) !== "image") return;
+          o.src = v;
+        });
+        draw();
+        rebuildStrip();
+      });
+
+      const fileRepick = document.createElement("input");
+      fileRepick.type = "file";
+      fileRepick.accept = "image/*";
+      fileRepick.className = "pm-mm-add-file-input";
+      const browseRepick = document.createElement("button");
+      browseRepick.type = "button";
+      browseRepick.className = "pm-btn";
+      browseRepick.textContent = "Choose image…";
+      browseRepick.addEventListener("click", () => fileRepick.click());
+      fileRepick.addEventListener("change", () => {
+        const f = fileRepick.files?.[0];
+        if (!f) return;
+        const fr = new FileReader();
+        fr.onload = () => {
+          const data = String(fr.result || "");
+          if (!data) return;
+          mut();
+          ctx.store.updateMindmap((m2) => {
+            const o = (m2.nodes || []).find((z) => z.id === editing);
+            if (!o || String(o.type) !== "image") return;
+            o.src = data;
+          });
+          fileRepick.value = "";
+          draw();
+          rebuildStrip();
+        };
+        fr.readAsDataURL(f);
+      });
+      const srcRow = document.createElement("div");
+      srcRow.className = "pm-toolbar";
+      srcRow.style.flexWrap = "wrap";
+      srcRow.style.gap = "0.35rem";
+      srcRow.style.alignItems = "center";
+      srcRow.append(imgSrcUrl, browseRepick, fileRepick);
+      row("Image", srcRow);
+
       const placeBtn = document.createElement("button");
       placeBtn.type = "button";
       placeBtn.className =

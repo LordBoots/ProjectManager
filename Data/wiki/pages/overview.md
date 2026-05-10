@@ -49,10 +49,16 @@ The Clock is always ticking! Players must manage their time wisely to be in opti
         They will start with a weapon and sheild for the player and their fighter. 
     
     Three Coins Tavern:
-        The player will start with a room already rented. 
+        The player will start with a basic room already rented. 
         They will have a full set of armour and weapons for the player and their 2 fighters.
         They will already have a medium sum of gold. 
-        They will already start with their mission 
+        They will already start with their mission level at the maximum for the Black Goose.
+    
+    Golden Swan Tavern:
+        The player will start with basic a room already rented. 
+        They will have a full set of armour and weapons for the player and their 3 fighters.
+        They will already have a large sum of gold. 
+        They will already start with their mission level at the maximum for the Three Coins.
 
 
 
