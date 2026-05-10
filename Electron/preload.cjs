@@ -16,6 +16,7 @@ window.electronAPI = {
 
   writeFile: (filePath, data) => {
     try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, data, 'utf8');
       return true;
     } catch (error) {
@@ -68,6 +69,7 @@ window.electronAPI = {
 
   writeJSON: (filePath, data) => {
     try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
       return true;
     } catch (error) {

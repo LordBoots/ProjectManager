@@ -530,6 +530,60 @@ img.pm-wiki-icon-img {
   overflow: hidden;
 }
 
+.pm-wiki-markdown-toolbar {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pm-wiki-title-input {
+  min-width: min(24rem, 100%);
+  flex: 1 1 18rem;
+}
+
+.pm-wiki-icon-input {
+  width: 8rem;
+}
+
+.pm-wiki-save-status {
+  color: var(--pm-text-muted);
+  font-size: 0.85rem;
+  min-width: 4.5rem;
+}
+
+.pm-wiki-monaco-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-md);
+  background: var(--pm-surface-elevated);
+}
+
+.pm-wiki-monaco-editor,
+.pm-wiki-monaco-loading,
+.pm-wiki-markdown-fallback {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.pm-wiki-monaco-loading {
+  display: grid;
+  place-items: center;
+  color: var(--pm-text-muted);
+}
+
+textarea.pm-wiki-markdown-fallback {
+  display: block;
+  min-height: 100%;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  line-height: 1.5;
+}
+
 .pm-wiki-toc-slot {
   flex-shrink: 0;
 }

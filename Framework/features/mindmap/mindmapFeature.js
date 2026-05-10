@@ -517,6 +517,12 @@ export function createMindmapFeature(ctx) {
   function linkThickness() {
     return numberInRange(ctx.store.getState().settings?.mindmapLinkThickness, 2, 1, 8);
   }
+  function imageLinkThickness() {
+    return numberInRange(ctx.store.getState().settings?.mindmapImageLinkThickness, 2, 1, 8);
+  }
+  function imageLinkColor() {
+    return colorValue(ctx.store.getState().settings?.mindmapImageLinkColor, DEFAULT_EDGE_COLOR);
+  }
   function selectedLinkThickness(base) {
     return base + Math.max(1, base * 0.35);
   }
@@ -814,9 +820,10 @@ export function createMindmapFeature(ctx) {
 
   function drawEdgesOverlay() {
     while (svgEdgesOverlay.firstChild) svgEdgesOverlay.removeChild(svgEdgesOverlay.firstChild);
-    const edgeW = linkThickness();
+    const edgeW = imageLinkThickness();
     const edgeWSelected = selectedLinkThickness(edgeW);
     const markerScale = linkMarkerScale(edgeW);
+    const globalImageLinkColor = imageLinkColor();
     const defs = document.createElementNS(NS, "defs");
     function mkMarker(id, fill) {
       const marker = document.createElementNS(NS, "marker");
@@ -834,7 +841,7 @@ export function createMindmapFeature(ctx) {
       marker.appendChild(arrowPath);
       defs.appendChild(marker);
     }
-    mkMarker("pm-mm-arrow-end-ov", DEFAULT_EDGE_COLOR);
+    mkMarker("pm-mm-arrow-end-ov", globalImageLinkColor);
     mkMarker("pm-mm-arrow-end-ov-sel", "#6c8cff");
     svgEdgesOverlay.appendChild(defs);
 
@@ -852,15 +859,15 @@ export function createMindmapFeature(ctx) {
       const { x: ax, y: ay } = anchorPlaneFromImageNorm(A, spot.nx, spot.ny);
       const { x1: xa, y1: ya, x2: xb, y2: yb } = directedEdgePointToNode(ax, ay, B);
       const selected = selEdges.has(e.id);
-      const edgeColor = colorValue(e.color, DEFAULT_EDGE_COLOR);
+      const edgeColor = colorValue(e.color, globalImageLinkColor);
       const markerId = "pm-mm-arrow-anchor-" + String(e.id).replace(/[^a-zA-Z0-9_-]/g, "-");
       mkMarker(markerId, edgeColor);
       const vis = document.createElementNS(NS, "line");
       vis.setAttribute("pointer-events", "none");
-      vis.setAttribute("x1", String(xa));
-      vis.setAttribute("y1", String(ya));
-      vis.setAttribute("x2", String(xb));
-      vis.setAttribute("y2", String(yb));
+      vis.setAttribute("x1", String(xb));
+      vis.setAttribute("y1", String(yb));
+      vis.setAttribute("x2", String(xa));
+      vis.setAttribute("y2", String(ya));
       vis.setAttribute("stroke", edgeColor);
       vis.setAttribute("stroke-width", String(selected ? edgeWSelected : edgeW));
       vis.setAttribute("marker-end", `url(#${markerId})`);
@@ -1373,7 +1380,7 @@ export function createMindmapFeature(ctx) {
       if (selectedLabelLink) {
         const lineColor = document.createElement("input");
         lineColor.type = "color";
-        lineColor.value = colorValue(selectedLabelLink.color, DEFAULT_EDGE_COLOR);
+        lineColor.value = colorValue(selectedLabelLink.color, imageLinkColor());
         lineColor.addEventListener("input", () => {
           ctx.store.updateMindmap((m) => {
             const e = (m.edges || []).find((x) => x.id === selectedLink.id);

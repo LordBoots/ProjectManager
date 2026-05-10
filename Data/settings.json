@@ -1,5 +1,7 @@
 {
   "remoteRepoHint": "https://github.com/LordBoots/ProjectManager",
   "remoteGithubBranch": "",
-  "mindmapLinkThickness": 3
+  "mindmapLinkThickness": 3,
+  "mindmapImageLinkThickness": 6,
+  "mindmapImageLinkColor": "#23c7a7"
 }

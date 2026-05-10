@@ -17,7 +17,7 @@ import { newDataUid } from '../../sync/dataUid.js';
 /** @typedef {{ columns: KanbanColumn[] }} KanbanData */
 
 /** @typedef {{ id: string, text: string }} WikiTocRow */
-/** @typedef {{ id: string, title: string, description?: string, icon?: string, tableOfContents?: WikiTocRow[] }} WikiPageMeta */
+/** @typedef {{ id: string, title: string, description?: string, icon?: string, file?: string }} WikiPageMeta */
 
 /**
  * @typedef {{ id: string, type: 'text', content: string }} WikiBlockText
@@ -38,7 +38,7 @@ import { newDataUid } from '../../sync/dataUid.js';
  * @typedef {{ type: 'mindmapNode'|'kanbanCard'|'wikiPage'|'wikiBlock'|'wikiTableRow', id: string }} EntityRef
  */
 
-/** @typedef {{ remoteRepoHint?: string, remoteGithubBranch?: string, mindmapLinkThickness?: number|string }} AppSettings */
+/** @typedef {{ remoteRepoHint?: string, remoteGithubBranch?: string, mindmapLinkThickness?: number|string, mindmapImageLinkThickness?: number|string, mindmapImageLinkColor?: string }} AppSettings */
 
 export function defaultVersionFile() {
   /** @type {VersionFile} */
@@ -82,17 +82,13 @@ export function defaultWiki() {
   return {
     pages: [
       {
-        id: 'p-intro',
-        title: 'Introduction',
-        description: '',
-        icon: '📄',
-        tableOfContents: [],
+        id: 'pages/introduction.md',
+        title: 'introduction',
+        file: 'pages/introduction.md',
       },
     ],
     markdownByPageId: {},
-    blocksByPageId: {
-      'p-intro': [],
-    },
+    blocksByPageId: {},
   };
 }
 
@@ -109,5 +105,7 @@ export function defaultSettings() {
     remoteRepoHint: '',
     remoteGithubBranch: '',
     mindmapLinkThickness: 2,
+    mindmapImageLinkThickness: 2,
+    mindmapImageLinkColor: '#7d869a',
   };
 }

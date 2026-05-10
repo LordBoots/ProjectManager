@@ -6,6 +6,11 @@ import {
   defaultSuggestions,
   defaultSettings,
 } from '../schema/defaults.js';
+import {
+  listWikiMarkdownRelativePaths,
+  loadMarkdownWiki,
+  saveMarkdownWiki,
+} from './wikiMarkdownRepository.js';
 
 /** Same opaque id encoding as Framework/sync/remoteManifestSync for `{ version: semver }`. */
 const LEGACY_SEMVER_UID_PREFIX = 'legacy-semver:';
@@ -302,11 +307,22 @@ export function loadAllProjectData(fs) {
     }
   };
 
+  const markdownFilesPresent = listWikiMarkdownRelativePaths(fs).length > 0;
+  const legacyWiki = read(FILES.wiki);
+  const wiki = loadMarkdownWiki(fs, legacyWiki ?? defaultWiki());
+  if (!markdownFilesPresent) {
+    try {
+      saveMarkdownWiki(fs, wiki);
+    } catch {
+      // Loading should not fail just because the one-time bootstrap write could not complete.
+    }
+  }
+
   return {
     version: loadVersionJson(read(FILES.version)),
     mindmap: loadMindmapJson(read(FILES.mindmap)),
     kanban: loadKanbanJson(read(FILES.kanban)),
-    wiki: loadWikiJson(read(FILES.wiki)),
+    wiki,
     suggestions: mergeSuggestions(read(FILES.suggestions)),
     settings: loadSettingsJson(read(FILES.settings)),
   };
@@ -320,7 +336,7 @@ export function saveAllProjectData(fs, state) {
   fs.writeJSON(fs.dataPath(FILES.version), state.version);
   fs.writeJSON(fs.dataPath(FILES.mindmap), state.mindmap);
   fs.writeJSON(fs.dataPath(FILES.kanban), state.kanban);
-  fs.writeJSON(fs.dataPath(FILES.wiki), state.wiki);
+  saveMarkdownWiki(fs, state.wiki);
   fs.writeJSON(fs.dataPath(FILES.suggestions), state.suggestions);
   fs.writeJSON(fs.dataPath(FILES.settings), state.settings);
 }

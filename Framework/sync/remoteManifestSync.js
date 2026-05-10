@@ -40,26 +40,66 @@ function cacheBustRawUrl(url) {
  */
 export async function replaceLocalDataFromGithubRaw(fs, dataRoot) {
   const base = String(dataRoot).replace(/\/$/, '');
-  const names = /** @type {string[]} */ (Object.values(FILES));
+  const names = /** @type {string[]} */ (Object.values(FILES)).filter((name) => name !== FILES.wiki);
 
   /** @type {Record<string, unknown>} */
   const blobs = {};
   for (const name of names) {
-    const url = cacheBustRawUrl(`${base}/${name}`);
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Fetch ${name} failed (${res.status})`);
-    const txt = await res.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(txt);
-    } catch {
-      throw new Error(`Remote ${name} is not valid JSON`);
-    }
-    if (!parsed || typeof parsed !== 'object') throw new Error(`Remote ${name} must be a JSON object`);
-    blobs[name] = parsed;
+    blobs[name] = await fetchJsonObject(`${base}/${name}`, name);
   }
   for (const name of names) {
     fs.writeJSON(fs.dataPath(name), blobs[name]);
+  }
+
+  await replaceLocalWikiFromGithubRaw(fs, base);
+}
+
+/**
+ * @param {string} url
+ * @param {string} label
+ */
+async function fetchJsonObject(url, label) {
+  const res = await fetch(cacheBustRawUrl(url), { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Fetch ${label} failed (${res.status})`);
+  const txt = await res.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(txt);
+  } catch {
+    throw new Error(`Remote ${label} is not valid JSON`);
+  }
+  if (!parsed || typeof parsed !== 'object') throw new Error(`Remote ${label} must be a JSON object`);
+  return parsed;
+}
+
+/**
+ * Downloads listed `wiki/pages/*.md` files. Raw GitHub has no folder listing; the repo may expose `wiki/index.json`
+ * only as a manifest of paths. Writes Markdown files under `Data/wiki/pages/` — does **not** write `wiki/index.json` locally.
+ *
+ * @param {ReturnType<typeof import('../platform/electronFs.js').createFsAdapter>} fs
+ * @param {string} base
+ */
+async function replaceLocalWikiFromGithubRaw(fs, base) {
+  try {
+    const index = await fetchJsonObject(`${base}/wiki/index.json`, 'wiki/index.json');
+    const pages = Array.isArray(/** @type {{ pages?: unknown }} */ (index).pages)
+      ? /** @type {{ file?: unknown }[]} */ (/** @type {{ pages: unknown[] }} */ (index).pages)
+      : [];
+    const markdown = /** @type {Record<string, string>} */ ({});
+    for (const page of pages) {
+      const file = typeof page.file === 'string' ? page.file.replace(/\\/g, '/').replace(/^\/+/, '') : '';
+      if (!file || !file.startsWith('pages/') || !file.toLowerCase().endsWith('.md')) continue;
+      const res = await fetch(cacheBustRawUrl(`${base}/wiki/${file}`), { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Fetch wiki/${file} failed (${res.status})`);
+      markdown[file] = await res.text();
+    }
+    for (const [file, content] of Object.entries(markdown)) {
+      fs.writeFile(fs.dataPath('wiki', file), content);
+    }
+    return;
+  } catch (err) {
+    const legacy = await fetchJsonObject(`${base}/${FILES.wiki}`, FILES.wiki);
+    fs.writeJSON(fs.dataPath(FILES.wiki), legacy);
   }
 }
 
@@ -96,7 +136,7 @@ export async function fetchRemoteSnapshotId(versionUrl) {
 export const fetchRemoteVersion = fetchRemoteSnapshotId;
 
 export function describeGitDataReplace() {
-  return 'Compare `Data/version.json` ids with GitHub; if they differ Sync downloads the remote `Data` JSON files and reloads.';
+  return 'Compare `Data/version.json` ids with GitHub; if they differ Sync downloads the remote `Data` JSON files, wiki Markdown files, and reloads.';
 }
 
 export function parseRepoHint(settings) {
