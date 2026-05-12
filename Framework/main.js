@@ -2,7 +2,7 @@ import Application from './app/Application.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const app = new Application();
-  app.initialize();
+  void app.initialize().catch((e) => console.error('[Application]', e));
 });
 
 export default Application;

@@ -1,3 +1,5 @@
+import { ensureDevPeerId } from '../../sync/peerIdentity.js';
+
 export function createSettingsFeature(ctx) {
   const root = document.createElement('div');
   const settings = ctx.store.getState().settings || {};
@@ -135,6 +137,134 @@ export function createSettingsFeature(ctx) {
     });
   });
 
+  const peerSyncTitle = document.createElement('p');
+  peerSyncTitle.className = 'pm-pane-title';
+  peerSyncTitle.style.marginTop = '1.25rem';
+  peerSyncTitle.textContent = 'Suggestions sync (PeerJS)';
+
+  const peerSyncHint = document.createElement('p');
+  peerSyncHint.className = 'pm-muted';
+  peerSyncHint.style.maxWidth = '520px';
+  peerSyncHint.textContent =
+    'Viewer builds dial this stable id. Store it outside git (Electron userData). Leave relay host empty to use the default public PeerServer, or point host/port/path/key at a self-hosted peerjs-server.';
+
+  const peerIdLbl = document.createElement('div');
+  peerIdLbl.className = 'pm-label';
+  peerIdLbl.textContent = 'Your developer Peer id';
+
+  const peerIdRow = document.createElement('div');
+  peerIdRow.className = 'pm-toolbar';
+  peerIdRow.style.flexWrap = 'wrap';
+
+  const peerIdInput = document.createElement('input');
+  peerIdInput.className = 'pm-input';
+  peerIdInput.readOnly = true;
+  peerIdInput.style.flex = '1';
+  peerIdInput.style.minWidth = '12rem';
+
+  const copyPeerBtn = document.createElement('button');
+  copyPeerBtn.type = 'button';
+  copyPeerBtn.className = 'pm-btn';
+  copyPeerBtn.textContent = 'Copy id';
+  copyPeerBtn.addEventListener('click', async () => {
+    const v = peerIdInput.value;
+    if (!v) return;
+    try {
+      await navigator.clipboard.writeText(v);
+    } catch {
+      peerIdInput.select();
+      document.execCommand('copy');
+    }
+  });
+
+  peerIdRow.append(peerIdInput, copyPeerBtn);
+
+  void (async () => {
+    try {
+      peerIdInput.value = await ensureDevPeerId();
+    } catch {
+      peerIdInput.value = '';
+    }
+  })();
+
+  const relayHostLbl = document.createElement('div');
+  relayHostLbl.className = 'pm-label';
+  relayHostLbl.textContent = 'Relay host (optional)';
+
+  const relayHostInput = document.createElement('input');
+  relayHostInput.className = 'pm-input';
+  relayHostInput.placeholder = 'Empty = default cloud server';
+  relayHostInput.value = String(settings.peerRelayHost ?? '');
+
+  const relayPortLbl = document.createElement('div');
+  relayPortLbl.className = 'pm-label';
+  relayPortLbl.textContent = 'Relay port';
+
+  const relayPortInput = document.createElement('input');
+  relayPortInput.className = 'pm-input';
+  relayPortInput.style.maxWidth = '6rem';
+  relayPortInput.type = 'number';
+  relayPortInput.value = String(settings.peerRelayPort ?? 443);
+
+  const relayPathLbl = document.createElement('div');
+  relayPathLbl.className = 'pm-label';
+  relayPathLbl.textContent = 'Relay path';
+
+  const relayPathInput = document.createElement('input');
+  relayPathInput.className = 'pm-input';
+  relayPathInput.value = String(settings.peerRelayPath ?? '/');
+
+  const relayKeyLbl = document.createElement('div');
+  relayKeyLbl.className = 'pm-label';
+  relayKeyLbl.textContent = 'PeerServer key';
+
+  const relayKeyInput = document.createElement('input');
+  relayKeyInput.className = 'pm-input';
+  relayKeyInput.value = String(settings.peerRelayKey ?? 'peerjs');
+
+  const relaySecureLbl = document.createElement('label');
+  relaySecureLbl.className = 'pm-toolbar';
+  relaySecureLbl.style.cursor = 'pointer';
+  const relaySecure = document.createElement('input');
+  relaySecure.type = 'checkbox';
+  relaySecure.checked = settings.peerRelaySecure !== false;
+  relaySecureLbl.appendChild(relaySecure);
+  relaySecureLbl.appendChild(document.createTextNode(' Use secure WebSocket (wss)'));
+
+  relayHostInput.addEventListener('input', () => {
+    const v = relayHostInput.value.trim();
+    debounceSettings((s) => {
+      s.peerRelayHost = v;
+    });
+  });
+
+  relayPortInput.addEventListener('input', () => {
+    const n = Number(relayPortInput.value);
+    debounceSettings((s) => {
+      s.peerRelayPort = Number.isFinite(n) ? n : 443;
+    });
+  });
+
+  relayPathInput.addEventListener('input', () => {
+    const v = relayPathInput.value.trim() || '/';
+    debounceSettings((s) => {
+      s.peerRelayPath = v;
+    });
+  });
+
+  relayKeyInput.addEventListener('input', () => {
+    const v = relayKeyInput.value.trim() || 'peerjs';
+    debounceSettings((s) => {
+      s.peerRelayKey = v;
+    });
+  });
+
+  relaySecure.addEventListener('change', () => {
+    debounceSettings((s) => {
+      s.peerRelaySecure = relaySecure.checked;
+    });
+  });
+
   root.append(
     title,
     hint,
@@ -148,7 +278,20 @@ export function createSettingsFeature(ctx) {
     imageLinkThicknessLbl,
     imageLinkThicknessRow,
     imageLinkColorLbl,
-    imageLinkColor
+    imageLinkColor,
+    peerSyncTitle,
+    peerSyncHint,
+    peerIdLbl,
+    peerIdRow,
+    relayHostLbl,
+    relayHostInput,
+    relayPortLbl,
+    relayPortInput,
+    relayPathLbl,
+    relayPathInput,
+    relayKeyLbl,
+    relayKeyInput,
+    relaySecureLbl
   );
 
   return {

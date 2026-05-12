@@ -33,6 +33,10 @@ yarn-error.log*
 .cache/
 .temp/
 
+# Suggestions / PeerJS (not part of repo sync; dev uses local file; viewer outbox)
+Data/suggestions.json
+Data/suggestions-outbox.json
+
 # Optional: If you have any large binary files or assets
 # that shouldn't be in version control
 # assets/large/

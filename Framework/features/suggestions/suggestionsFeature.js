@@ -122,6 +122,25 @@ export function createSuggestionsFeature(ctx) {
     return (items ?? []).filter(passesPanelFilter);
   }
 
+  /**
+   * Inbox + sidebar source list (viewer merges upload queue with developer snapshot).
+   * @param {object} st
+   */
+  function inboxSourceItems(st) {
+    if (isDev) return itemsForPanel(st.suggestions.items ?? []);
+    const fromDev = itemsForPanel(st.suggestions?.items ?? []);
+    const devIds = new Set(fromDev.map((i) => i.id));
+    const ob = st.suggestionsOutbox?.items ?? [];
+    const pending = itemsForPanel(ob).filter((i) => !devIds.has(i.id));
+    return [...pending, ...fromDev];
+  }
+
+  function isPendingOnly(st, id) {
+    if (isDev) return false;
+    const devIds = new Set((st.suggestions?.items ?? []).map((i) => i.id));
+    return (st.suggestionsOutbox?.items ?? []).some((x) => x.id === id && !devIds.has(x.id));
+  }
+
   const asideShell = ctx.layout.suggestionsAside;
   asideShell.replaceChildren();
 
@@ -223,7 +242,98 @@ export function createSuggestionsFeature(ctx) {
 
   const mainList = document.createElement('div');
   mainList.className = 'pm-stack';
-  mainRoot.append(mainTabsWrap, mainTitle, mainList);
+
+  const peerSyncWrap = document.createElement('div');
+  peerSyncWrap.className = 'pm-stack';
+  peerSyncWrap.style.marginBottom = '0.65rem';
+
+  const peerStatusLine = document.createElement('div');
+  peerStatusLine.className = 'pm-muted';
+  peerStatusLine.style.fontSize = '0.85rem';
+  peerStatusLine.textContent = 'Peer: …';
+
+  /** @param {{ status?: string, detail?: string }} [payload] */
+  function setPeerLine(payload) {
+    const st = payload?.status ?? 'idle';
+    const detail = String(payload?.detail ?? '');
+    /** @type {Record<string, string>} */
+    const labels = {
+      idle: '…',
+      disconnected: 'Disconnected',
+      connecting: 'Connecting…',
+      connected: 'Connected',
+      error: 'Error',
+    };
+    peerStatusLine.textContent = `Peer: ${labels[st] || st}${detail ? ` — ${detail}` : ''}`;
+  }
+
+  const unsubPeerStatus = ctx.bus.on(BusEvents.SUGGESTIONS_PEER_STATUS, setPeerLine);
+
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let peerSettingsTid = null;
+  function debouncePeerSettings(mut) {
+    clearTimeout(peerSettingsTid);
+    peerSettingsTid = setTimeout(() => ctx.store.updateSettings(mut), 400);
+  }
+
+  peerSyncWrap.appendChild(peerStatusLine);
+
+  if (!isDev) {
+    const syncHint = document.createElement('p');
+    syncHint.className = 'pm-muted';
+    syncHint.style.fontSize = '0.8rem';
+    syncHint.style.margin = '0';
+    syncHint.textContent =
+      'Connect to the developer’s session. Paste their Peer id (shown in Settings on the dev build). Optional PeerServer relay if not using the public default.';
+
+    const remoteLbl = document.createElement('div');
+    remoteLbl.className = 'pm-label';
+    remoteLbl.textContent = 'Developer Peer id';
+
+    const remoteIn = document.createElement('input');
+    remoteIn.className = 'pm-input';
+    remoteIn.autocomplete = 'off';
+    remoteIn.value = String(ctx.store.getState().settings?.remoteDevPeerId ?? '');
+    remoteIn.addEventListener('input', () => {
+      debouncePeerSettings((s) => {
+        s.remoteDevPeerId = remoteIn.value.trim();
+      });
+    });
+
+    const hostLbl = document.createElement('div');
+    hostLbl.className = 'pm-label';
+    hostLbl.textContent = 'Relay host (optional)';
+
+    const hostIn = document.createElement('input');
+    hostIn.className = 'pm-input';
+    hostIn.placeholder = 'Default cloud PeerServer if empty';
+    hostIn.value = String(ctx.store.getState().settings?.peerRelayHost ?? '');
+    hostIn.addEventListener('input', () => {
+      debouncePeerSettings((s) => {
+        s.peerRelayHost = hostIn.value.trim();
+      });
+    });
+
+    const portLbl = document.createElement('div');
+    portLbl.className = 'pm-label';
+    portLbl.textContent = 'Relay port';
+
+    const portIn = document.createElement('input');
+    portIn.className = 'pm-input';
+    portIn.style.maxWidth = '6rem';
+    portIn.type = 'number';
+    portIn.value = String(ctx.store.getState().settings?.peerRelayPort ?? 443);
+    portIn.addEventListener('input', () => {
+      const n = Number(portIn.value);
+      debouncePeerSettings((s) => {
+        s.peerRelayPort = Number.isFinite(n) ? n : 443;
+      });
+    });
+
+    peerSyncWrap.append(syncHint, remoteLbl, remoteIn, hostLbl, hostIn, portLbl, portIn);
+  }
+
+  mainRoot.append(peerSyncWrap, mainTabsWrap, mainTitle, mainList);
 
   function updateMainTitle() {
     mainTitle.textContent = asidePanelKind === KIND_DEV_NOTE ? 'Dev notes inbox' : 'Suggestions inbox';
@@ -259,7 +369,8 @@ export function createSuggestionsFeature(ctx) {
 
   function focusInboxItem(id) {
     const st = ctx.store.getState();
-    const item = (st.suggestions.items ?? []).find((x) => x.id === id);
+    let item = (st.suggestions.items ?? []).find((x) => x.id === id);
+    if (!item && !isDev) item = (st.suggestionsOutbox?.items ?? []).find((x) => x.id === id);
     if (!item) return;
     selectedId = id;
     if (isDev) {
@@ -302,7 +413,7 @@ export function createSuggestionsFeature(ctx) {
     }
 
     const st = ctx.store.getState();
-    const items = itemsForPanel(st.suggestions.items ?? []);
+    const items = inboxSourceItems(st);
     scroll.replaceChildren();
 
     const maxAside = 12;
@@ -326,6 +437,14 @@ export function createSuggestionsFeature(ctx) {
       const title = document.createElement('div');
       title.className = 'pm-suggest-card-title';
       title.textContent = it.title || '(untitled)';
+      if (isPendingOnly(st, it.id)) {
+        title.appendChild(document.createTextNode(' '));
+        const pen = document.createElement('span');
+        pen.className = 'pm-muted';
+        pen.style.fontSize = '0.75rem';
+        pen.textContent = '(pending)';
+        title.appendChild(pen);
+      }
 
       const divider = document.createElement('div');
       divider.className = 'pm-suggest-expand-hit';
@@ -400,7 +519,7 @@ export function createSuggestionsFeature(ctx) {
 
   function rerenderMain() {
     const st = ctx.store.getState();
-    const items = itemsForPanel(st.suggestions.items ?? []);
+    const items = inboxSourceItems(st);
     mainList.replaceChildren();
     updateMainTitle();
 
@@ -429,6 +548,13 @@ export function createSuggestionsFeature(ctx) {
       const sub = document.createElement('div');
       sub.className = 'pm-muted pm-suggestions-inbox-meta';
       renderInboxSubtitle(sub, it.category, it.priority, it.status);
+      if (isPendingOnly(st, it.id)) {
+        const pend = document.createElement('span');
+        pend.className = 'pm-muted';
+        pend.style.marginLeft = '0.35rem';
+        pend.textContent = '(pending upload)';
+        sub.appendChild(pend);
+      }
       left.append(title, sub);
 
       const actions = document.createElement('div');
@@ -539,6 +665,17 @@ export function createSuggestionsFeature(ctx) {
     }
     let workingRefs = [...mergedMap.values()];
 
+    const devOnly = ctx.permissions.canSetSuggestionApproval();
+    const stOpen = ctx.store.getState();
+    let viewerReadOnly = false;
+    if (!devOnly && existing) {
+      const inDevList = (stOpen.suggestions?.items ?? []).some((x) => x.id === /** @type {{ id?: string }} */ (existing).id);
+      const inOutbox = (stOpen.suggestionsOutbox?.items ?? []).some(
+        (x) => x.id === /** @type {{ id?: string }} */ (existing).id,
+      );
+      viewerReadOnly = inDevList && !inOutbox;
+    }
+
     const overlay = document.createElement('div');
     overlay.className = 'pm-overlay';
 
@@ -548,13 +685,17 @@ export function createSuggestionsFeature(ctx) {
     const h = document.createElement('div');
     h.className = 'pm-pane-title';
     h.style.marginBottom = '0.25rem';
-    h.textContent = existing
-      ? effectiveKind === KIND_DEV_NOTE
-        ? 'Edit dev note'
-        : 'Edit suggestion'
-      : effectiveKind === KIND_DEV_NOTE
-        ? 'New dev note'
-        : 'New suggestion';
+    if (viewerReadOnly) {
+      h.textContent = effectiveKind === KIND_DEV_NOTE ? 'Dev note (read-only)' : 'Suggestion (read-only)';
+    } else {
+      h.textContent = existing
+        ? effectiveKind === KIND_DEV_NOTE
+          ? 'Edit dev note'
+          : 'Edit suggestion'
+        : effectiveKind === KIND_DEV_NOTE
+          ? 'New dev note'
+          : 'New suggestion';
+    }
 
     const form = document.createElement('form');
     form.className = 'pm-stack';
@@ -563,13 +704,19 @@ export function createSuggestionsFeature(ctx) {
     const body = fieldTextarea(effectiveKind === KIND_DEV_NOTE ? 'Notes' : 'Suggestion', 'body', existing?.body ?? '');
     const category = fieldSelect('Category', 'category', CATEGORIES, existing?.category ?? '');
     const priority = fieldSelect('Priority', 'priority', PRIORITIES, existing?.priority ?? 'Medium');
-    const devOnly = ctx.permissions.canSetSuggestionApproval();
     const status = fieldSelect('Status', 'status', ['Pending', 'Approved', 'Rejected'], existing?.status ?? 'Pending');
     const rejection = fieldText('Rejection reason', 'rejectionReason', existing?.rejectionReason ?? '');
 
     form.append(title.row, body.row, category.row, priority.row);
     if (devOnly) {
       form.append(status.row, rejection.row);
+    }
+
+    if (viewerReadOnly) {
+      title.input.readOnly = true;
+      body.textarea.readOnly = true;
+      category.sel.disabled = true;
+      priority.sel.disabled = true;
     }
 
     const refsRow = document.createElement('div');
@@ -608,9 +755,13 @@ export function createSuggestionsFeature(ctx) {
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'pm-btn';
-    cancel.textContent = 'Cancel';
+    cancel.textContent = viewerReadOnly ? 'Close' : 'Cancel';
 
-    actions.append(submit, cancel);
+    if (viewerReadOnly) {
+      actions.appendChild(cancel);
+    } else {
+      actions.append(submit, cancel);
+    }
     form.appendChild(actions);
 
     modal.append(h, form);
@@ -628,6 +779,8 @@ export function createSuggestionsFeature(ctx) {
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
+      if (viewerReadOnly) return;
+
       const raw = serializeForm(form);
       if (!raw.category) {
         alert('Please select a category.');
@@ -647,6 +800,17 @@ export function createSuggestionsFeature(ctx) {
         createdAt: existing?.createdAt ?? nowIso(),
         updatedAt: nowIso(),
       };
+
+      if (!devOnly) {
+        ctx.store.updateSuggestionsOutbox((ob) => {
+          const idx = ob.items.findIndex((x) => x.id === next.id);
+          if (idx >= 0) ob.items[idx] = next;
+          else ob.items.push(next);
+        });
+        close();
+        renderAll();
+        return;
+      }
 
       if (devOnly && next.status === 'Rejected') {
         ctx.store.updateSuggestions((s) => {
@@ -675,12 +839,20 @@ export function createSuggestionsFeature(ctx) {
 
   addBtnAside.addEventListener('click', () => openEditor(null, [], isDev ? asidePanelKind : KIND_SUGGESTION));
 
-  /** Mind map / kanban / wiki updates replace `state` often; `suggestions` keeps the same reference until that slice changes. Rebuilding the aside on every notify() replaced the DOM every frame during drags and swallowed clicks. */
+  /** Mind map / kanban / wiki updates replace `state` often; avoid re-rendering the aside when unrelated slices change. */
   let lastSuggestionsSlice = /** @type {object | null} */ (null);
+  let lastOutboxSlice = /** @type {object | null} */ (null);
   const unsubStore = ctx.store.subscribe((st) => {
     const s = st.suggestions;
-    if (lastSuggestionsSlice !== null && s === lastSuggestionsSlice) return;
-    lastSuggestionsSlice = s;
+    if (isDev) {
+      if (lastSuggestionsSlice !== null && s === lastSuggestionsSlice) return;
+      lastSuggestionsSlice = s;
+    } else {
+      const o = st.suggestionsOutbox;
+      if (lastSuggestionsSlice === s && lastOutboxSlice === o) return;
+      lastSuggestionsSlice = s;
+      lastOutboxSlice = o;
+    }
     renderAll();
   });
 
@@ -689,9 +861,9 @@ export function createSuggestionsFeature(ctx) {
     const t = /** @type {{ type?: string; id?: string }} */ (payload);
     if (typeof t.type !== 'string' || typeof t.id !== 'string') return;
     hl.hoveredKey = `${t.type}:${t.id}`;
-    const items = ctx.store.getState().suggestions.items ?? [];
+    const items = inboxSourceItems(ctx.store.getState());
     hl.highlightIds = new Set(
-      items.filter((it) => passesPanelFilter(it) && matchesHover(it, hl.hoveredKey)).map((it) => it.id),
+      items.filter((it) => matchesHover(it, hl.hoveredKey)).map((it) => it.id),
     );
     ctx.bus.emit(BusEvents.HIGHLIGHT_SUGGESTIONS, { suggestionIds: [...hl.highlightIds], hoveredKey: hl.hoveredKey });
     renderAll();
@@ -736,6 +908,8 @@ export function createSuggestionsFeature(ctx) {
     },
 
     unmount() {
+      if (peerSettingsTid) clearTimeout(peerSettingsTid);
+      unsubPeerStatus();
       unsubStore();
       unsubHover();
       unsubHoverEnd();

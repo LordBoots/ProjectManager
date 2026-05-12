@@ -38,7 +38,21 @@ import { newDataUid } from '../../sync/dataUid.js';
  * @typedef {{ type: 'mindmapNode'|'kanbanCard'|'wikiPage'|'wikiBlock'|'wikiTableRow', id: string }} EntityRef
  */
 
-/** @typedef {{ remoteRepoHint?: string, remoteGithubBranch?: string, mindmapLinkThickness?: number|string, mindmapImageLinkThickness?: number|string, mindmapImageLinkColor?: string }} AppSettings */
+/**
+ * @typedef {{
+ *   remoteRepoHint?: string,
+ *   remoteGithubBranch?: string,
+ *   mindmapLinkThickness?: number|string,
+ *   mindmapImageLinkThickness?: number|string,
+ *   mindmapImageLinkColor?: string,
+ *   peerRelayHost?: string,
+ *   peerRelayPort?: number,
+ *   peerRelayPath?: string,
+ *   peerRelaySecure?: boolean,
+ *   peerRelayKey?: string,
+ *   remoteDevPeerId?: string,
+ * }} AppSettings
+ */
 
 export function defaultVersionFile() {
   /** @type {VersionFile} */
@@ -107,5 +121,16 @@ export function defaultSettings() {
     mindmapLinkThickness: 2,
     mindmapImageLinkThickness: 2,
     mindmapImageLinkColor: '#7d869a',
+    peerRelayHost: '',
+    peerRelayPort: 443,
+    peerRelayPath: '/',
+    peerRelaySecure: true,
+    peerRelayKey: 'peerjs',
+    remoteDevPeerId: '',
   };
+}
+
+/** Viewer-only queue of suggestions waiting to upload to the developer Peer. */
+export function defaultSuggestionsOutbox() {
+  return { items: [] };
 }

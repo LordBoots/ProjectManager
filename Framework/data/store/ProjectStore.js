@@ -65,6 +65,15 @@ export function createProjectStore(initial) {
     notify();
   }
 
+  function updateSuggestionsOutbox(mutator) {
+    const ob = deepClone(
+      state.suggestionsOutbox ?? { items: [] },
+    );
+    mutator(ob);
+    state = { ...state, suggestionsOutbox: ob };
+    notify();
+  }
+
   function updateSettings(mutator) {
     const s = deepClone(state.settings);
     mutator(s);
@@ -81,6 +90,7 @@ export function createProjectStore(initial) {
     updateKanban,
     updateWiki,
     updateSuggestions,
+    updateSuggestionsOutbox,
     updateSettings,
   };
 }

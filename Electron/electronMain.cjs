@@ -1,5 +1,6 @@
 // Electron main process
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 // Window state management
@@ -48,8 +49,44 @@ function createWindow() {
   }
 }
 
+const PEER_IDENTITY_FILE = 'pm-suggestions-peer-identity.json';
+
+function peerIdentityPath() {
+  return path.join(app.getPath('userData'), PEER_IDENTITY_FILE);
+}
+
+function registerPeerIdentityIpc() {
+  ipcMain.handle('pm-get-peer-identity', () => {
+    try {
+      const p = peerIdentityPath();
+      if (!fs.existsSync(p)) return { peerId: null };
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const peerId = typeof raw.peerId === 'string' && raw.peerId.trim() ? raw.peerId.trim() : null;
+      return { peerId };
+    } catch {
+      return { peerId: null };
+    }
+  });
+
+  ipcMain.handle('pm-set-peer-identity', (event, id) => {
+    const peerId = typeof id === 'string' && id.trim() ? id.trim() : '';
+    if (!peerId) return false;
+    try {
+      const p = peerIdentityPath();
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, JSON.stringify({ peerId }, null, 2), 'utf8');
+      return true;
+    } catch (e) {
+      console.error('[Electron] pm-set-peer-identity', e);
+      return false;
+    }
+  });
+}
+
 // Initialize application when Electron is ready
 app.whenReady().then(() => {
+  registerPeerIdentityIpc();
+
   // Set the working directory to the project root
   process.chdir(projectRoot);
 

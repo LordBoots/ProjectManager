@@ -39,5 +39,7 @@ export const BusEvents = {
   HIGHLIGHT_SUGGESTIONS: 'suggestions:highlight',
   /** Main suggestions inbox: select row and scroll into view (`{ id: string }`). */
   FOCUS_SUGGESTION_INBOX: 'suggestions:focusInbox',
+  /** PeerJS sync: `{ status: 'disconnected'|'connecting'|'connected'|'error', detail?: string }`. */
+  SUGGESTIONS_PEER_STATUS: 'suggestions:peerStatus',
   NAVIGATE_TO_ENTITY: 'navigate:entity',
 };

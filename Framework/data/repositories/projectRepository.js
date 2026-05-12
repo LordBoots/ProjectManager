@@ -4,6 +4,7 @@ import {
   defaultKanban,
   defaultWiki,
   defaultSuggestions,
+  defaultSuggestionsOutbox,
   defaultSettings,
 } from '../schema/defaults.js';
 import {
@@ -21,8 +22,15 @@ const FILES = {
   kanban: 'kanban.json',
   wiki: 'wiki.json',
   suggestions: 'suggestions.json',
+  suggestionsOutbox: 'suggestions-outbox.json',
   settings: 'settings.json',
 };
+
+/** Pulled from GitHub raw Sync; excludes local-only / PeerJS suggestion payloads (see plan). */
+export const GITHUB_SYNC_SKIP_JSON = new Set([
+  FILES.suggestions,
+  FILES.suggestionsOutbox,
+]);
 
 function normalizeSuggestionItem(it) {
   if (!it || typeof it !== 'object' || typeof /** @type {{ id?: unknown }} */ (it).id !== 'string') return null;
@@ -43,12 +51,20 @@ function normalizeSuggestionList(arr) {
   return out;
 }
 
-function mergeSuggestions(raw) {
+export function mergeSuggestions(raw) {
   const d = defaultSuggestions();
   if (!raw || typeof raw !== 'object') return d;
   return {
     items: normalizeSuggestionList(Array.isArray(raw.items) ? raw.items : d.items),
     archived: normalizeSuggestionList(Array.isArray(raw.archived) ? raw.archived : d.archived),
+  };
+}
+
+function mergeSuggestionsOutbox(raw) {
+  const d = defaultSuggestionsOutbox();
+  if (!raw || typeof raw !== 'object') return d;
+  return {
+    items: normalizeSuggestionList(Array.isArray(raw.items) ? raw.items : d.items),
   };
 }
 
@@ -290,13 +306,27 @@ export function loadVersionJson(raw) {
 export function loadSettingsJson(raw) {
   const d = defaultSettings();
   if (!raw || typeof raw !== 'object') return d;
-  return { ...d, ...raw };
+  const merged = { ...d, ...raw };
+  const port = Number(merged.peerRelayPort);
+  merged.peerRelayPort = Number.isFinite(port) ? port : d.peerRelayPort;
+  merged.peerRelayHost = typeof merged.peerRelayHost === 'string' ? merged.peerRelayHost : d.peerRelayHost;
+  merged.peerRelayPath = typeof merged.peerRelayPath === 'string' ? merged.peerRelayPath : d.peerRelayPath;
+  merged.peerRelaySecure = merged.peerRelaySecure !== false;
+  merged.peerRelayKey =
+    typeof merged.peerRelayKey === 'string' && merged.peerRelayKey.trim()
+      ? merged.peerRelayKey.trim()
+      : d.peerRelayKey;
+  merged.remoteDevPeerId =
+    typeof merged.remoteDevPeerId === 'string' ? merged.remoteDevPeerId : d.remoteDevPeerId;
+  return merged;
 }
 
 /**
  * @param {ReturnType<import('../../platform/electronFs.js').createFsAdapter>} fs
+ * @param {{ developer?: boolean }} [options]
  */
-export function loadAllProjectData(fs) {
+export function loadAllProjectData(fs, options = {}) {
+  const developer = options.developer === true;
   const read = (name) => {
     const p = fs.dataPath(name);
     if (!fs.exists(p)) return null;
@@ -323,7 +353,8 @@ export function loadAllProjectData(fs) {
     mindmap: loadMindmapJson(read(FILES.mindmap)),
     kanban: loadKanbanJson(read(FILES.kanban)),
     wiki,
-    suggestions: mergeSuggestions(read(FILES.suggestions)),
+    suggestions: developer ? mergeSuggestions(read(FILES.suggestions)) : defaultSuggestions(),
+    suggestionsOutbox: developer ? defaultSuggestionsOutbox() : mergeSuggestionsOutbox(read(FILES.suggestionsOutbox)),
     settings: loadSettingsJson(read(FILES.settings)),
   };
 }
@@ -331,13 +362,22 @@ export function loadAllProjectData(fs) {
 /**
  * @param {ReturnType<import('../../platform/electronFs.js').createFsAdapter>} fs
  * @param {ReturnType<typeof loadAllProjectData>} state
+ * @param {{ developer?: boolean }} [options]
  */
-export function saveAllProjectData(fs, state) {
+export function saveAllProjectData(fs, state, options = {}) {
+  const developer = options.developer === true;
   fs.writeJSON(fs.dataPath(FILES.version), state.version);
   fs.writeJSON(fs.dataPath(FILES.mindmap), state.mindmap);
   fs.writeJSON(fs.dataPath(FILES.kanban), state.kanban);
   saveMarkdownWiki(fs, state.wiki);
-  fs.writeJSON(fs.dataPath(FILES.suggestions), state.suggestions);
+  if (developer) {
+    fs.writeJSON(fs.dataPath(FILES.suggestions), state.suggestions);
+  } else {
+    fs.writeJSON(
+      fs.dataPath(FILES.suggestionsOutbox),
+      state.suggestionsOutbox ?? defaultSuggestionsOutbox(),
+    );
+  }
   fs.writeJSON(fs.dataPath(FILES.settings), state.settings);
 }
 

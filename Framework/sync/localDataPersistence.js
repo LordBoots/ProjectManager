@@ -3,7 +3,7 @@ import { newDataUid } from './dataUid.js';
 
 let timer = null;
 
-export function createPersistence({ fs, store, debounceMs = 450 }) {
+export function createPersistence({ fs, store, debounceMs = 450, developer = false }) {
   /** Suppress rebound autosave while applying a rotated snapshot id post-flush */
   let suppressAutoSaveRoundTrip = false;
   /** Exclude the synchronous initial subscribe(...) callback so idle boot does not rotate disk */
@@ -12,16 +12,17 @@ export function createPersistence({ fs, store, debounceMs = 450 }) {
   function flush(/** @type {{ skipUidBump?: boolean }} */ opts = {}) {
     const skipBump = opts.skipUidBump === true;
     const st = store.getState();
+    const saveOpts = { developer };
 
     if (skipBump) {
-      saveAllProjectData(fs, st);
+      saveAllProjectData(fs, st, saveOpts);
       return;
     }
 
     const uid = newDataUid();
     suppressAutoSaveRoundTrip = true;
     try {
-      saveAllProjectData(fs, { ...st, version: { uid } });
+      saveAllProjectData(fs, { ...st, version: { uid } }, saveOpts);
       store.patch({ version: { uid } });
     } finally {
       queueMicrotask(() => {
@@ -41,7 +42,7 @@ export function createPersistence({ fs, store, debounceMs = 450 }) {
   function loadFromDisk() {
     suppressAutoSaveRoundTrip = true;
     try {
-      store.replace(loadAllProjectData(fs));
+      store.replace(loadAllProjectData(fs, { developer }));
     } finally {
       queueMicrotask(() => {
         suppressAutoSaveRoundTrip = false;

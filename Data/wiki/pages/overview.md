@@ -34,31 +34,31 @@ The Clock is always ticking! Players must manage their time wisely to be in opti
     The backgrounds affects multiple aspects of the start of the game including location, items, relations and available activities.  
 
     The player can choose one of three starting points (corresponding to the chosen background): 
-     - The Streets - This is the "First day in town" scenario. The player will have to sleep on the streets. 
-     - Black Goose Tavern - Tier 3 tavern with a single figther hired, gold and a starting inventory. Some relations will have already been made.
-     - Three Coins Tavern - Tier 2 tavern with three fighters hired, more gold, starting inventory.  More relations will have already been made.
-     - Golden Swan Tavern - Tier 1 tavern with 5 fighters hired, plenty of gold and a robust starting inventory. More relations will already be made. 
-    
-    Streets:
-        The player will have to sleep on the streets in one of a few locations and setup a small camp. The player will have to work their way up to enough gold to hire a room in the Black Goose Tavern OR one of the other taverns.
-        The players first move will likely be to find out how to make some gold to rent a room.
+        - The Streets - This is the "First day in town" scenario. The player will have to sleep on the streets. 
+        - Black Goose Tavern - Tier 3 tavern with a single figther hired, gold and a starting inventory. Some relations will have already been made.
+        - Three Coins Tavern - Tier 2 tavern with three fighters hired, more gold, starting inventory.  More relations will have already been made.
+        - Golden Swan Tavern - Tier 1 tavern with 5 fighters hired, plenty of gold and a robust starting inventory. More relations will already be made. 
+        
+        Streets:
+            The player will have to sleep on the streets in one of a few locations and setup a small camp. The player will have to work their way up to enough gold to hire a room in the Black Goose Tavern OR one of the other taverns.
+            The players first move will likely be to find out how to make some gold to rent a room.
 
-    Black Goose Tavern: 
-        The player will start here with a room already rented and a single fighter. 
-        They will start with a very small sum of gold.
-        They will start with a weapon and sheild for the player and their fighter. 
-    
-    Three Coins Tavern:
-        The player will start with a basic room already rented. 
-        They will have a full set of armour and weapons for the player and their 2 fighters.
-        They will already have a medium sum of gold. 
-        They will already start with their mission level at the maximum for the Black Goose.
-    
-    Golden Swan Tavern:
-        The player will start with basic a room already rented. 
-        They will have a full set of armour and weapons for the player and their 3 fighters.
-        They will already have a large sum of gold. 
-        They will already start with their mission level at the maximum for the Three Coins.
+        Black Goose Tavern: 
+            The player will start here with a room already rented and a single fighter. 
+            They will start with a very small sum of gold.
+            They will start with a weapon and sheild for the player and their fighter. 
+        
+        Three Coins Tavern:
+            The player will start with a basic room already rented. 
+            They will have a full set of armour and weapons for the player and their 2 fighters.
+            They will already have a medium sum of gold. 
+            They will already start with their mission level at the maximum for the Black Goose.
+        
+        Golden Swan Tavern:
+            The player will start with basic a room already rented. 
+            They will have a full set of armour and weapons for the player and their 3 fighters.
+            They will already have a large sum of gold. 
+            They will already start with their mission level at the maximum for the Three Coins.
 
 
 

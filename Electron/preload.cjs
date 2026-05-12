@@ -1,9 +1,13 @@
 // Preload script - exposes Node.js helpers to the renderer process
 const fs = require('fs');
 const path = require('path');
+const { ipcRenderer } = require('electron');
 
 // Since contextIsolation is false, attach directly to window
 window.electronAPI = {
+  getPeerIdentity: () => ipcRenderer.invoke('pm-get-peer-identity'),
+  setPeerIdentity: (id) => ipcRenderer.invoke('pm-set-peer-identity', id),
+
   // File system operations
   readFile: (filePath) => {
     try {

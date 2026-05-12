@@ -7,6 +7,7 @@ import { createFsAdapter } from '../platform/electronFs.js';
 import { loadAllProjectData } from '../data/repositories/projectRepository.js';
 import { createProjectStore } from '../data/store/ProjectStore.js';
 import { createPersistence } from '../sync/localDataPersistence.js';
+import { createSuggestionsPeerTransport } from '../sync/suggestionsPeerTransport.js';
 import {
   fetchRemoteSnapshotId,
   parseRepoHint,
@@ -40,12 +41,20 @@ export default class Application {
     const config = getAppConfig();
     const permissions = createPermissions(config);
     const fs = createFsAdapter();
-    const initial = loadAllProjectData(fs);
+    const initial = loadAllProjectData(fs, { developer: config.developer });
     const store = createProjectStore(initial);
     const bus = createEventBus();
 
-    const persistence = createPersistence({ fs, store });
+    const persistence = createPersistence({ fs, store, developer: config.developer });
     persistence.attachAutoSave();
+
+    const peerTransport = createSuggestionsPeerTransport({
+      store,
+      bus,
+      developer: config.developer,
+      persistence,
+    });
+    await peerTransport.start();
 
     /** @type {{ impl: null | ReturnType<typeof createRouter> }} */
     const routeApi = {
@@ -133,6 +142,7 @@ export default class Application {
     });
 
     this._cleanups = [
+      () => peerTransport.dispose(),
       () => suggestions.unmount(),
       () => home.unmount(),
       () => wiki.unmount(),

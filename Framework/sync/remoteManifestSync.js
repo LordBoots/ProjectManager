@@ -1,4 +1,4 @@
-import { FILES } from '../data/repositories/projectRepository.js';
+import { FILES, GITHUB_SYNC_SKIP_JSON } from '../data/repositories/projectRepository.js';
 
 /**
  * GitHub raw: parse repo URL hint, compare `Data/version.json` snapshot ids, optionally pull full `Data/`.
@@ -40,7 +40,9 @@ function cacheBustRawUrl(url) {
  */
 export async function replaceLocalDataFromGithubRaw(fs, dataRoot) {
   const base = String(dataRoot).replace(/\/$/, '');
-  const names = /** @type {string[]} */ (Object.values(FILES)).filter((name) => name !== FILES.wiki);
+  const names = /** @type {string[]} */ (Object.values(FILES)).filter(
+    (name) => name !== FILES.wiki && !GITHUB_SYNC_SKIP_JSON.has(name),
+  );
 
   /** @type {Record<string, unknown>} */
   const blobs = {};
