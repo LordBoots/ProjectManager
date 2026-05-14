@@ -3,5 +3,11 @@
   "remoteGithubBranch": "",
   "mindmapLinkThickness": 3,
   "mindmapImageLinkThickness": 6,
-  "mindmapImageLinkColor": "#23c7a7"
+  "mindmapImageLinkColor": "#23c7a7",
+  "peerRelayHost": "",
+  "peerRelayPort": 443,
+  "peerRelayPath": "/",
+  "peerRelaySecure": true,
+  "peerRelayKey": "peerjs",
+  "remoteDevPeerId": ""
 }

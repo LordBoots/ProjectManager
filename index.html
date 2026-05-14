@@ -10,6 +10,8 @@
   <script>
     window.__PM_DEVELOPER__ = true;
   </script>
+  <!-- PeerJS browser bundle (UMD); ES module imports cannot use bare "peerjs" in the renderer without a bundler -->
+  <script src="./node_modules/peerjs/dist/peerjs.min.js"></script>
   <script type="module" src="Framework/main.js"></script>
 </body>
 </html>

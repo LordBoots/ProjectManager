@@ -42,7 +42,7 @@ The player can choose to:
     The city is infested with crime, scuffles and power struggles. 
     Factions are tight knit groups of people that are often at odds with each other.
 
-## Player's Story: 
+## Player's Story:
     The player can choose to start on the Streets or at the Black Goose Tavern.
     This is done at the character creation screen through the "Starting Location" page.
     The starting location affects multiple aspects of the start of the game including location, items and available activities.  

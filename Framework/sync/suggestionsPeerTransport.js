@@ -1,10 +1,20 @@
-import Peer from 'peerjs';
 import { BusEvents } from '../core/EventBus.js';
 import { defaultSettings } from '../data/schema/defaults.js';
 import { mergeSuggestions } from '../data/repositories/projectRepository.js';
 import { ensureDevPeerId } from './peerIdentity.js';
 
 const SCHEMA_VERSION = 1;
+
+/** @returns {typeof import('peerjs').default} */
+function getPeerConstructor() {
+  const P = globalThis.Peer;
+  if (typeof P !== 'function') {
+    throw new Error(
+      '[SuggestionsPeerTransport] PeerJS global missing. Load ./node_modules/peerjs/dist/peerjs.min.js before Framework/main.js.',
+    );
+  }
+  return P;
+}
 
 /** @typedef {'idle'|'disconnected'|'connecting'|'connected'|'error'} PeerSyncStatus */
 
@@ -175,6 +185,7 @@ export function createSuggestionsPeerTransport(opts) {
   }
 
   async function startDev() {
+    const Peer = getPeerConstructor();
     const id = await ensureDevPeerId();
     const po = buildPeerOptions(currentSettings());
     peer = po ? new Peer(id, po) : new Peer(id);
@@ -289,6 +300,7 @@ export function createSuggestionsPeerTransport(opts) {
     destroyPeer();
     viewerBackoffMs = 2000;
 
+    const Peer = getPeerConstructor();
     const po = buildPeerOptions(currentSettings());
     peer = po ? new Peer(undefined, po) : new Peer();
 

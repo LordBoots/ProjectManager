@@ -99,6 +99,8 @@ export function createWikiFeature(ctx) {
 
   /** @type {string | null} */
   let selectedPageId = null;
+  /** @type {string | null} */
+  let pendingScrollSlug = null;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let saveTimer = null;
   let loadingEditorValue = false;
@@ -114,6 +116,14 @@ export function createWikiFeature(ctx) {
   const editor = mountMarkdownEditor(editorShell, {
     value: '',
     readOnly: !canEditWiki(),
+    getWikiPageId: () => selectedPageId,
+    onNavigateWikiPage: (pageId, opts) => {
+      if (!pageId) return;
+      clearPendingSave();
+      flushToStore();
+      pendingScrollSlug = opts?.hash ?? null;
+      ctx.router.setRoute(`wiki:${pageId}`);
+    },
     onChange: () => {
       if (loadingEditorValue || !canEditWiki()) return;
       scheduleSave();
@@ -197,7 +207,7 @@ export function createWikiFeature(ctx) {
     const page = selectedPage();
     if (!page || !selectedPageId) {
       loadingEditorValue = true;
-      editor.setValue('');
+      editor.setWikiDocument(null, '');
       loadingEditorValue = false;
       setStatus('No pages');
       return;
@@ -205,9 +215,14 @@ export function createWikiFeature(ctx) {
 
     pageSelect.value = selectedPageId;
     loadingEditorValue = true;
-    editor.setValue(markdownForPage(stateWiki(), selectedPageId));
+    editor.setWikiDocument(selectedPageId, markdownForPage(stateWiki(), selectedPageId));
     loadingEditorValue = false;
     setStatus(editable ? 'Ready' : 'Read only');
+    const slug = pendingScrollSlug;
+    if (slug) {
+      pendingScrollSlug = null;
+      queueMicrotask(() => editor.revealHeading?.(slug));
+    }
     requestAnimationFrame(() => editor.layout());
   }
 

@@ -64,7 +64,12 @@ window.electronAPI = {
   readJSON: (filePath) => {
     try {
       const data = fs.readFileSync(filePath, 'utf8');
-      return JSON.parse(data);
+      const trimmed = String(data).trim();
+      if (!trimmed) {
+        console.warn(`Empty JSON file (ignored): ${filePath}`);
+        return null;
+      }
+      return JSON.parse(trimmed);
     } catch (error) {
       console.error('Error reading JSON file:', error);
       throw error;
