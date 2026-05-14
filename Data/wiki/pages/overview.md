@@ -10,16 +10,29 @@
 # Game Description:
 ==================================================
 **Title**: "Dynasty: Arena"
-**Genre**: Classic RPG with FnF style stat checks and rolls
+**Genre**: Classic RPG with DC20 style stat checks and rolls
 **Setting**: Low-Fantasy Medieval
 **Era**: (800-1200 AD) Late iron age type setting, not much machinery but simple technology. For example the highest technology would be water wheel or windmill powered. 
 
-The Clock is always ticking! Players must manage their time wisely to be in optimal condition for scheduled fights.
+Dynasty Arena is a medieval RPG game set in a single town/region. The player starts as a lowly commoner making their way to a new life of fame and fortune.
+live is a stuggle to survive in the town and make a name for themselves.
+The player starts either in the streets or at the Black Goose Tavern. They must find ways to aquire wealth, hire rooms, hire fighters, keep themselves alive and make a name for themselves.
+Stats play heavily into the game, the player must manage their stats to survive and succeed.
 
-**Main Gameplay Loop**:
-    The player must work to increase their wealth, their inventory, their fighters and their relations. 
-    The player must visit locations throughout the map to complete various tasks and unlock further progression points by interacting with people, objects and scenarios. 
+The main "hub" of the game is the map. The player can navigate the map to visit different locations and interact with the world.
+When a player moves to a new location, they will be presented with a view of the general environment and NPCs in the location.
+The player will be able to interact with many of these NPCs and objects. 
+The patrons/actors at locations will change based on the players progression, choices and time of day.
 
+The player plays as they wish - this is not a linear story and there are no overarching story goals.
+The player can choose to:
+- Explore the town and find ways to make gold
+- Hire fighters and train them
+- Upgrade their equipment
+- Attend the arena and fight for fame and fortune
+- Attend the tavern and socialize with other players
+- Participate in gambling in various tavern games or betting on fights
+- Complete quests and missions
 
 # Story and Setting:
 ==================================================
@@ -27,85 +40,67 @@ The Clock is always ticking! Players must manage their time wisely to be in opti
 ## World Context:
     The "World" for this game is a single walled city with different districts. 
     The city is infested with crime, scuffles and power struggles. 
+    Factions are tight knit groups of people that are often at odds with each other.
 
-## Player's Story:
-    The player can choose to start as a lowly farmer making their way to a new life OR they can pick from multiple starting points further along in their journey.
-    This is done at the character creation screen through the "Background" page.
-    The backgrounds affects multiple aspects of the start of the game including location, items, relations and available activities.  
+## Player's Story: 
+    The player can choose to start on the Streets or at the Black Goose Tavern.
+    This is done at the character creation screen through the "Starting Location" page.
+    The starting location affects multiple aspects of the start of the game including location, items and available activities.  
 
-    The player can choose one of three starting points (corresponding to the chosen background): 
-        - The Streets - This is the "First day in town" scenario. The player will have to sleep on the streets. 
-        - Black Goose Tavern - Tier 3 tavern with a single figther hired, gold and a starting inventory. Some relations will have already been made.
-        - Three Coins Tavern - Tier 2 tavern with three fighters hired, more gold, starting inventory.  More relations will have already been made.
-        - Golden Swan Tavern - Tier 1 tavern with 5 fighters hired, plenty of gold and a robust starting inventory. More relations will already be made. 
-        
-        Streets:
-            The player will have to sleep on the streets in one of a few locations and setup a small camp. The player will have to work their way up to enough gold to hire a room in the Black Goose Tavern OR one of the other taverns.
-            The players first move will likely be to find out how to make some gold to rent a room.
+    The player can choose one of two starting locations: 
+     - The Streets - This is the "First day in town and I'm broke" scenario. The player will have to sleep on the streets. 
+     - Black Goose Tavern - This is the "First day in town but I came with my life savings" scenario. The player has the choice to rent a room in the tavern if they choose.
+    
+    Streets:
+        The player will have to sleep on the streets in one of a few locations and setup a small camp. 
+        The player will have to work their way up to enough gold to hire a room in the Black Goose Tavern.
+        This can be done by:
+        - Exploring the town and finding loose change or items to sell
+        - Asking around the town for odd jobs
+        - Fighting in the arena or The Pit for gold
+        - Stealing/Pickpocketing and selling items to the black market for gold
+        - Gambling at the tavern for gold
+        - Others planned but not yet listed.  
 
-        Black Goose Tavern: 
-            The player will start here with a room already rented and a single fighter. 
-            They will start with a very small sum of gold.
-            They will start with a weapon and sheild for the player and their fighter. 
-        
-        Three Coins Tavern:
-            The player will start with a basic room already rented. 
-            They will have a full set of armour and weapons for the player and their 2 fighters.
-            They will already have a medium sum of gold. 
-            They will already start with their mission level at the maximum for the Black Goose.
-        
-        Golden Swan Tavern:
-            The player will start with basic a room already rented. 
-            They will have a full set of armour and weapons for the player and their 3 fighters.
-            They will already have a large sum of gold. 
-            They will already start with their mission level at the maximum for the Three Coins.
-
-
-
-The region's arena has fallen into disrepair due to the prior manager's incompetence. Attendance is low. The faction's fighters are poorly equipped and demoralized. Rival factions smell weakness.
-
-Your mandate is simple: **Revitalize the arena. Restore the faction's honor. Win.** - But the arena is a subsidiary of the town and the town is a subsidiary of the faction - so you will have to do your best to get the region fuctioning well in order to get the arena working well.
-
-But everyone knows the truth - in this world, power flows to those who control the arena. Your "mandate" is really an opportunity. Build your stable of fighters. Climb the brackets. And perhaps... rise even higher.
+    Black Goose Tavern: 
+        The player will start in the lobby of the tavern as if they have just entered town and are looking for a place to stay. 
+        They will start with a very small sum of gold (112 gold - for ambiguity sake).
+        They will start with a weapon and sheild in their inventory as well as some minor items. 
+        The player can chose to rent a room in the tavern for a daily cost OR camp on the streets for free if they choose.
+        The player will get kicked out of heir room if they don't pay the daily rent.
+        Based on the reputation with the tavern owner, the player can get a discount on the daily rent.
 
 ## Narrative Progression:
-The narrative is delivered through environmental storytelling and the Events system. Text-based storytelling is intentionally hidden inside the event system so that we don't annoy the player with text.
+The narrative is delivered through environmental storytelling and the Scene interaction system. Text-based storytelling is intentionally hidden inside the event system so that we don't annoy the player with text.
 
-|-----------------|----------------------------------------------------------------------------------------|
-| Phase           | Narrative Context                                                                      |
-|-----------------|----------------------------------------------------------------------------------------|
-| Tutorial        | Your first day. The arena is empty. Your fighters are green. Prove you belong here.    |
-| Early Game      | Rival factions test you with easy fights. They're measuring you.                       |
-| Mid Game        | You've caught attention. Sabotage attempts increase. Harder opponents emerge.          |
-| Late Game       | You're a threat now. The brackets tighten. Champions from other factions challenge you.|
-| Post-Expansion  | Other faction cities take notice. Invitations arrive. New arenas await conquest.       |
-|-----------------|----------------------------------------------------------------------------------------|
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
+| Phase           | Narrative Context                                                                                                   |
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
+| Tutorial        | Your first day. You're not known in town yet. You're struggling to get by.                                          |
+| Early Game      | You have some gold to your name and 1-2 fighters hired. Things are looking up.                                      |
+| Mid Game        | You have a decent sum of gold, fighters and gear. You're formidable and have plenty of opportunity.                 |
+| Late Game       | You're a threat now. You have the means to fight endlessly, to buy gear in plenty and opportunities are endless.    |
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
 
 ## Story Expression:
 Environmental storytelling is key. Story is glimpsed through:
 - The Events system (dialogue, encounters, consequences)
 - Exploring the town and locations
 - NPC interactions and overheard conversations
-- The state of the arena and town reflecting your progress
+- Hinted implications in the town and the arena
+- The players own words and actions
+- The players own decisions and choices
+- Notebooks and diaries that can be collected and read (making long dialogues optional)
 
-## Game Length: 
-I plan to target a gameplay length of 20-40 hours. The longer people PLAY the more WORD OF MOUTH which leads to quantity of sales.
-As a solo dveloper with no advertising budget, this is the best we can do.
-
-This gameplay time would be spread between the arena and the town mechanics.
-- The "arena" is considered the main incentive for the player to play the game, which forces them to interact with the town mechanics if they want to win.
-- I also plan to have a "sandbox arena" mode where the player can play the game without the resource pressure of the town. - this would act as a "free fighting" mode where the player can just fight for fun. It would likely include a bunch of arena types that does not actually fit the games theme but are still fun to play.
-
-
-# Game Modes:
+# Game States:
 ==================================================
-The game has three main modes of gameplay. All systems branch from Map Mode.
+The game has three main states of gameplay. All systems branch from Map Mode.
 |----------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
 | Mode                 | Description                                                                                                   | Documentation                                                    |
 |----------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
-| **Map Mode**         | Top-down 3D town overview. Navigate districts, manage buildings, upgrade resources. The main hub of the game. | [Map Mode](/Documentation/GDD/MapMode.md)                        |
-| **Location Mode**    | Interior/area views accessed by clicking locations in Map Mode. Interact with services, NPCs, and items.      | [Location Mode](/Documentation/GDD/LocationMode.md)              |
-| **Arena Mode**       | Combat mode for scheduled fights. Control a fighter or command the field.                                     | [Arena Mode](/Documentation/GDD/ArenaMode.md)                    |
+| **Map State**        | Top-down/Isometric 3D town overview. The main hub of the game.                                                | [Map State](/Documentation/GDD/MapState.md)                      |
+| **Location State**   | Interior/area views accessed by clicking locations in Map State. Interact with services, NPCs, and items.     | [Location State](/Documentation/GDD/LocationState.md)            |
+| **Combat State**     | Combat mode for scheduled or unscheduled fights. Control your character manually.                             | [Combat State](/Documentation/GDD/CombatState.md)                  |
 |----------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
 
 
@@ -136,13 +131,6 @@ Events add variety and depth. Triggered by travel, interaction, or time. Three t
 # Time & Calendar
 Fights are scheduled via the in-game calendar (12 months, 30 days each). Time progresses in real-time unless traveling or interacting. Missing scheduled fights incurs penalties.
 **Details:** [Time and Calendar](/Documentation/GDD/TimeAndCalendar.md)
-
-# Not Implemented in Version 1.0:
-- **Expeditions** - Send fighters on missions for resources/equipment.
-- **Trading** - Automated trade with non-hostile factions.
-- **Crafting** - Convert materials into equipment/consumables.
-- **Faction Reputation** - Faction reputation with other factions. Fame is the primary reputation metric for the player currently. Might actually be better being named "favour" or "favourability" as it is more fitting for the game's theme and we already have "Fame" acting as an attractor for events and rewards.
-- **Sabotage** - Sabotage opposing factions to gain arena advantages. See [Sabotage](/Documentation/GDD/Sabotage.md) for design notes.
 
 
 # Game Flow:
