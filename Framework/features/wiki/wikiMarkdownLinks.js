@@ -111,3 +111,73 @@ export function stripMarkdownLinkTitleSuffix(inner) {
   if (sp >= 0) s = s.slice(0, sp).trim();
   return s;
 }
+
+/**
+ * @typedef {{ type: 'heading', title: string, slug: string, depth: number }} WikiSidebarHeading
+ * @typedef {{ type: 'link', label: string } & (
+ *   | { target: 'wiki', pageId: string, hash?: string }
+ *   | { target: 'external', href: string }
+ * )} WikiSidebarLink
+ */
+
+/**
+ * Headings (ATX) and markdown links for the wiki sidebar index.
+ * In-page wiki links that only target a fragment (`#slug`) are omitted from `links` — those jumps are listed under Headings.
+ * @param {string} markdown
+ * @param {string} basePageId `pages/foo.md`
+ * @returns {{ headings: WikiSidebarHeading[], links: WikiSidebarLink[] }}
+ */
+export function extractWikiSidebarOutline(markdown, basePageId) {
+  /** @type {WikiSidebarHeading[]} */
+  const headings = [];
+  /** @type {WikiSidebarLink[]} */
+  const links = [];
+
+  const base = String(basePageId || '').trim();
+  const lines = String(markdown || '').split(/\r?\n/);
+  for (const line of lines) {
+    const hm = /^\s{0,3}(#{1,6})\s*(.+?)\s*$/.exec(line);
+    if (!hm) continue;
+    let title = hm[2].replace(/\s+#+\s*$/, '').trim();
+    title = title.replace(/:\s*$/, '').trim();
+    const slug = slugifyAnchorFragment(title);
+    if (!slug) continue;
+    headings.push({
+      type: 'heading',
+      title: title || slug,
+      slug,
+      depth: hm[1].length,
+    });
+  }
+
+  if (!base.startsWith('pages/')) {
+    return { headings, links };
+  }
+
+  const full = String(markdown || '');
+  const re = /\[([^\]]*)\]\(([^)]*)\)/g;
+  let m;
+  while ((m = re.exec(full)) !== null) {
+    const label = (m[1] || '').trim() || '(link)';
+    const href = stripMarkdownLinkTitleSuffix(m[2]);
+    if (!href) continue;
+    const resolved = resolveMarkdownHrefToWikiTarget(base, href);
+    if (!resolved) continue;
+    if (resolved.kind === 'external') {
+      links.push({ type: 'link', label, target: 'external', href: resolved.href });
+    } else {
+      if (resolved.hash && resolved.pageId === base) {
+        continue;
+      }
+      links.push({
+        type: 'link',
+        label,
+        target: 'wiki',
+        pageId: resolved.pageId,
+        ...(resolved.hash ? { hash: resolved.hash } : {}),
+      });
+    }
+  }
+
+  return { headings, links };
+}

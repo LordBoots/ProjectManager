@@ -1,4 +1,3 @@
-# Index:
 1.  [Game Description](#game-description)
 2.  [Story and Setting](#story-and-setting)
 3.  [Game Modes](#game-modes)
