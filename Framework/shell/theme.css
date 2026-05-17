@@ -555,6 +555,60 @@ img.pm-wiki-icon-img {
 
 .pm-wiki-sidebar-section.pm-wiki-sidebar-pages {
   flex-shrink: 0;
+  max-height: min(42vh, 14rem);
+  min-height: 0;
+}
+
+.pm-wiki-sidebar-page-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  max-height: 9.5rem;
+  padding-right: 0.15rem;
+}
+
+.pm-wiki-sidebar-page-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.pm-wiki-sidebar-page {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: var(--pm-radius-sm);
+  background: transparent;
+  color: var(--pm-text);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  padding: 0.28rem 0.4rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pm-wiki-sidebar-page:hover {
+  background: color-mix(in srgb, var(--pm-text-muted) 16%, transparent);
+}
+
+.pm-wiki-sidebar-page--active {
+  background: var(--pm-accent-soft);
+  color: var(--pm-accent);
+  font-weight: 600;
+}
+
+.pm-wiki-sidebar-page--active:hover {
+  background: color-mix(in srgb, var(--pm-accent) 22%, transparent);
+}
+
+.pm-wiki-sidebar-new-page {
+  width: 100%;
+  flex-shrink: 0;
+  margin-top: 0.35rem;
 }
 
 .pm-wiki-sidebar-section.pm-wiki-sidebar-index {
@@ -658,6 +712,8 @@ img.pm-wiki-icon-img {
 .pm-wiki-markdown-toolbar {
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 0;
 }
 
 .pm-wiki-title-input {
@@ -706,6 +762,7 @@ textarea.pm-wiki-markdown-fallback {
   border-radius: 0;
   background: transparent;
   font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
   line-height: 1.5;
 }
 

@@ -338,6 +338,7 @@ export function mountMarkdownEditor(host, opts = {}) {
       container.className = 'pm-wiki-monaco-editor';
       host.replaceChildren(container);
       editor = monaco.editor.create(container, {
+        fontSize: 12,
         wordWrap: 'on',
         minimap: { enabled: false },
         automaticLayout: true,

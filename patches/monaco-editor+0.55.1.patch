@@ -1,0 +1,33 @@
+diff --git a/node_modules/monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js b/node_modules/monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js
+index c8fa632..bf8e5b7 100644
+--- a/node_modules/monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js
++++ b/node_modules/monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js
+@@ -90,6 +90,8 @@ import { ResourceMap } from '../../../base/common/map.js';
+ import { ITreeSitterLibraryService } from '../../common/services/treeSitter/treeSitterLibraryService.js';
+ import { StandaloneTreeSitterLibraryService } from './standaloneTreeSitterLibraryService.js';
+ import { NullDataChannelService, IDataChannelService } from '../../../platform/dataChannel/common/dataChannel.js';
++import product from '../../../platform/product/common/product.js';
++import { IProductService } from '../../../platform/product/common/productService.js';
+ 
+ /*---------------------------------------------------------------------------------------------
+  *  Copyright (c) Microsoft Corporation. All rights reserved.
+@@ -664,6 +666,11 @@ class StandaloneAccessbilitySignalService {
+     async playSignal(cue, options) {
+     }
+ }
++class StandaloneProductService {
++    constructor() {
++        Object.assign(this, product);
++    }
++}
+ registerSingleton(ILogService, StandaloneLogService, 0 /* InstantiationType.Eager */);
+ registerSingleton(IConfigurationService, StandaloneConfigurationService, 0 /* InstantiationType.Eager */);
+ registerSingleton(ITextResourceConfigurationService, StandaloneResourceConfigurationService, 0 /* InstantiationType.Eager */);
+@@ -701,6 +708,7 @@ registerSingleton(IAccessibilitySignalService, StandaloneAccessbilitySignalServi
+ registerSingleton(ITreeSitterLibraryService, StandaloneTreeSitterLibraryService, 0 /* InstantiationType.Eager */);
+ registerSingleton(ILoggerService, NullLoggerService, 0 /* InstantiationType.Eager */);
+ registerSingleton(IDataChannelService, NullDataChannelService, 0 /* InstantiationType.Eager */);
++registerSingleton(IProductService, StandaloneProductService, 0 /* InstantiationType.Eager */);
+ /**
+  * We don't want to eagerly instantiate services because embedders get a one time chance
+  * to override services when they create the first editor.

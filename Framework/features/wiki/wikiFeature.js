@@ -79,19 +79,15 @@ export function createWikiFeature(ctx) {
   const toolbar = document.createElement('div');
   toolbar.className = 'pm-toolbar pm-wiki-markdown-toolbar';
 
-  const pageSelect = document.createElement('select');
-  pageSelect.className = 'pm-select';
-  pageSelect.title = 'Wiki page';
-
-  const devNewPageBtn = document.createElement('button');
-  devNewPageBtn.type = 'button';
-  devNewPageBtn.className = 'pm-btn';
-  devNewPageBtn.textContent = 'New page';
-
   const status = document.createElement('span');
   status.className = 'pm-wiki-save-status';
 
-  toolbar.append(pageSelect, devNewPageBtn, status);
+  toolbar.append(status);
+
+  const devNewPageBtn = document.createElement('button');
+  devNewPageBtn.type = 'button';
+  devNewPageBtn.className = 'pm-btn pm-wiki-sidebar-new-page';
+  devNewPageBtn.textContent = 'New page';
 
   const body = document.createElement('div');
   body.className = 'pm-wiki-body';
@@ -104,11 +100,9 @@ export function createWikiFeature(ctx) {
   const pageListHeading = document.createElement('div');
   pageListHeading.className = 'pm-wiki-sidebar-heading';
   pageListHeading.textContent = 'Pages';
-  const pageListPlaceholder = document.createElement('p');
-  pageListPlaceholder.className = 'pm-wiki-sidebar-placeholder';
-  pageListPlaceholder.textContent =
-    'Page list will move here and replace the toolbar dropdown in a later update.';
-  pageListSection.append(pageListHeading, pageListPlaceholder);
+  const pageListScroll = document.createElement('div');
+  pageListScroll.className = 'pm-wiki-sidebar-page-scroll';
+  pageListSection.append(pageListHeading, pageListScroll, devNewPageBtn);
 
   const indexSection = document.createElement('div');
   indexSection.className = 'pm-wiki-sidebar-section pm-wiki-sidebar-index';
@@ -260,6 +254,55 @@ export function createWikiFeature(ctx) {
     },
   });
 
+  function pageLabel(page) {
+    return (
+      page.title ||
+      (page.file ? wikiTitleFromRelativeMarkdownPath(page.file) : page.id.split('/').pop() || page.id)
+    );
+  }
+
+  /**
+   * @param {ReturnType<typeof wikiPages>} list
+   */
+  function refreshSidebarPageList(list) {
+    pageListScroll.replaceChildren();
+    devNewPageBtn.hidden = !ctx.permissions.isDeveloper();
+
+    const ul = document.createElement('ul');
+    ul.className = 'pm-wiki-sidebar-page-list';
+
+    if (list.length === 0) {
+      const li = document.createElement('li');
+      const p = document.createElement('p');
+      p.className = 'pm-wiki-sidebar-muted';
+      p.textContent = 'No wiki pages yet.';
+      li.append(p);
+      ul.append(li);
+    } else {
+      for (const page of list) {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pm-wiki-sidebar-page';
+        if (page.id === selectedPageId) {
+          btn.classList.add('pm-wiki-sidebar-page--active');
+          btn.setAttribute('aria-current', 'page');
+        }
+        btn.textContent = pageLabel(page);
+        btn.title = page.id;
+        btn.addEventListener('click', () => {
+          if (page.id === selectedPageId) return;
+          clearPendingSave();
+          flushToStore();
+          navigateToPage(page.id);
+        });
+        li.append(btn);
+        ul.append(li);
+      }
+    }
+    pageListScroll.append(ul);
+  }
+
   function setStatus(text) {
     status.textContent = text;
   }
@@ -271,20 +314,6 @@ export function createWikiFeature(ctx) {
   function selectedPage() {
     const id = selectedPageId;
     return id ? pages().find((page) => page.id === id) ?? null : null;
-  }
-
-  function fillPageSelect(list) {
-    const previous = pageSelect.value;
-    pageSelect.replaceChildren();
-    for (const page of list) {
-      const opt = document.createElement('option');
-      opt.value = page.id;
-      opt.textContent =
-        page.title || (page.file ? wikiTitleFromRelativeMarkdownPath(page.file) : page.id.split('/').pop() || page.id);
-      pageSelect.appendChild(opt);
-    }
-    if (selectedPageId) pageSelect.value = selectedPageId;
-    else if (previous) pageSelect.value = previous;
   }
 
   function flushToStore() {
@@ -304,7 +333,7 @@ export function createWikiFeature(ctx) {
     saveTimer = setTimeout(() => {
       saveTimer = null;
       flushToStore();
-      fillPageSelect(pages());
+      refreshSidebarPageList(pages());
     }, 350);
   }
 
@@ -326,12 +355,10 @@ export function createWikiFeature(ctx) {
 
     const list = pages();
     selectedPageId = choosePageId(list, preferredPageId || selectedPageId);
-    fillPageSelect(list);
+    refreshSidebarPageList(list);
 
     const editable = canEditWiki() && !!selectedPageId;
     root.classList.toggle('pm-wiki--readonly', !editable);
-    pageSelect.disabled = list.length === 0;
-    devNewPageBtn.hidden = !ctx.permissions.isDeveloper();
     editor.setReadOnly(!editable);
 
     const page = selectedPage();
@@ -344,7 +371,6 @@ export function createWikiFeature(ctx) {
       return;
     }
 
-    pageSelect.value = selectedPageId;
     loadingEditorValue = true;
     editor.setWikiDocument(selectedPageId, markdownForPage(stateWiki(), selectedPageId));
     loadingEditorValue = false;
@@ -355,7 +381,10 @@ export function createWikiFeature(ctx) {
       pendingScrollSlug = null;
       queueMicrotask(() => editor.revealHeading?.(slug));
     }
-    requestAnimationFrame(() => editor.layout());
+    requestAnimationFrame(() => {
+      editor.layout();
+      pageListScroll.querySelector('.pm-wiki-sidebar-page--active')?.scrollIntoView({ block: 'nearest' });
+    });
   }
 
   function usedWikiFiles() {
@@ -370,13 +399,6 @@ export function createWikiFeature(ctx) {
     if (!pageId) return;
     ctx.router.setRoute(`wiki:${pageId}`);
   }
-
-  pageSelect.addEventListener('change', () => {
-    const next = pageSelect.value;
-    clearPendingSave();
-    flushToStore();
-    navigateToPage(next);
-  });
 
   devNewPageBtn.addEventListener('click', () => {
     if (!ctx.permissions.isDeveloper()) return;
@@ -397,7 +419,9 @@ export function createWikiFeature(ctx) {
       wiki.blocksByPageId = {};
     });
     navigateToPage(file);
-    queueMicrotask(() => pageSelect.focus());
+    queueMicrotask(() => {
+      pageListScroll.querySelector('.pm-wiki-sidebar-page--active')?.scrollIntoView({ block: 'nearest' });
+    });
   });
 
   root.addEventListener('contextmenu', (e) => {
