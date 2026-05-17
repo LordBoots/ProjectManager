@@ -92,9 +92,23 @@ Environmental storytelling is key. Story is glimpsed through:
 - The players own decisions and choices
 - Notebooks and diaries that can be collected and read (making long dialogues optional)
 
+# Game Flow:
+==================================================
+**New Game → Character Creation → Gameplay Loop**
+
+1. **Main Menu**: New Game, Load Game, Settings, Extras, Exit
+2. **Character Creation**: Choose starting location, name, appearance and stat distribution.
+3. **Gameplay Loop**: Explore town, train fighters, manage equipment, compete in scheduled arena fights or The Pit, gamble, theive, complete quests and missions, etc.
+
+**End State**: No overarching story goal. Player-driven progression with finite completion goals.
+    The player ends up with a full team, plenty of gold, maxed tavern level, maxed arena level, maxed equipment level, maxed fighters level, maxed quests and missions completed.
+    The intent is always that the player plays as they wish and are never "forced" to do anything.
+
+
 # Game States:
 ==================================================
 The game has three main states of gameplay. All systems branch from Map Mode.
+These states are semantic in that they are only listed here to delineate the different modes of gameplay.
 |----------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
 | Mode                 | Description                                                                                                   | Documentation                                                    |
 |----------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
@@ -109,120 +123,46 @@ The game has three main states of gameplay. All systems branch from Map Mode.
 Brief overview of core systems. See linked documentation for full details.
 
 # Player Character
-The player character is a non-combatant that manages the town and fighters. They have Fame and Charisma stats. Visible in Map Mode and Location Mode.
-**Details:** [User Interface - Player Character Panel](/Documentation/GDD/UserInterface.md)
+The player character is the player's avatar in the game. They are the player's representative in the game and are the player's main asset.
+The players stats are determined based on their initial choice of distribution and their current level/progression.
+In Location State the player is visible in scene but is not controllable, they just appear where they need to after clicking interactions or events.
+In Combat State the player is controllable and can move around, swing their wepon, block, dodge, activate traps, etc.
+
+Player Stats: 
+|----------------------|---------------------------------------------------------------------------------------------------------------|
+| Stat                 | Description                                                                                                   | 
+|----------------------|---------------------------------------------------------------------------------------------------------------|
+| **AGI**              | The player's agility.                                                                                         | 
+| **STR**              | The player's strength.                                                                                        | 
+| **DEX**              | The player's dexterity.                                                                                       | 
+| **CHA**              | The player's charisma.                                                                                        | 
+|----------------------|---------------------------------------------------------------------------------------------------------------|
 
 # Fighters
-Fighters are the faction's primary asset. The player recruits, trains, equips, and develops them to improve arena performance. Up to 20 fighters can be housed at the Keep.
+Fighters are one of the players main assets. They are used almost exclusively in the arena or on missions. 
 **Details:** [Fighter Management](/Documentation/GDD/FighterManagement.md)
 
 # Equipment
 Equipment quality and upkeep directly influence fighter survival and performance. Items have quality ratings, degrade during combat, and can be repaired or replaced.
 **Details:** [Equipment Management](/Documentation/GDD/EquipmentManagement.md)
 
-# Resources
-The town has resource levels (Food, Wood, Metal, Special) that gate features and events. Upgrade resource buildings to increase levels.
-**Details:** [Map Mode - Resources](/Documentation/GDD/MapMode.md)
-
-# Events
-Events add variety and depth. Triggered by travel, interaction, or time. Three types: Combat, Dialogue, and Passive.
-**Details:** [Events](/Documentation/GDD/Events.md)
-
 # Time & Calendar
 Fights are scheduled via the in-game calendar (12 months, 30 days each). Time progresses in real-time unless traveling or interacting. Missing scheduled fights incurs penalties.
 **Details:** [Time and Calendar](/Documentation/GDD/TimeAndCalendar.md)
 
 
-# Game Flow:
-==================================================
-**New Game → Arena Tutorial → Town Tutorial → Gameplay Loop**
-
-1. **Main Menu**: New Game, Load Game, Settings, Extras, Exit
-2. **Character Creation**: Choose faction, name, banner, appearance
-3. **Arena Tutorial**: Learn combat controls and movement
-4. **Town Tutorial**: Introduction to shops, keep, and town management
-5. **Gameplay Loop**: Explore town, train fighters, manage resources, compete in scheduled arena fights
-
-**Goals**: Train fighters, manage town, win arena fights, build reputation, gain fame, unlock equipment.
-
-**End State**: No overarching story goal. Player-driven progression with finite completion goals. See [Completion Goals](#completion-goals).
-
-
-# Completion Goals:
-==================================================
-The game has finite progression. Once all goals are achieved, the game becomes a "fight for fun" sandbox where the player can enjoy arena combat without resource pressure.
-
-## Version 1.0 - Max Completion:
-|-----------------------|---------------------------------------------------------------------------|
-| System                | Completion State                                                          |
-|-----------------------|---------------------------------------------------------------------------|
-| Buildings             | All upgrades purchased                                                    |
-| Fame                  | Maxed                                                                     |
-| Charisma              | Maxed                                                                     |
-| Equipment             | All tiers unlocked, weapons break less often, surplus gear stockpile      |
-| Services              | Near-instant (from upgrade bonuses)                                       |
-| Arena                 | Schedule fights at will, all challenges complete                          |
-| Fighters              | All 20 Keep slots filled with max-level fighters                          |
-| Cosmetics             | All player cosmetics and equipment cosmetics unlocked                     |
-| Events                | All event chains experienced                                              |
-|-----------------------|---------------------------------------------------------------------------|
-
-## Post-Expansion - Max Completion:
-|-----------------------|---------------------------------------------------------------------------|
-| System                | Completion State                                                          |
-|-----------------------|---------------------------------------------------------------------------|
-| Arenas                | Champion of all 4 faction cities (home + 3 expansion)                     |
-| Expeditions           | All expedition types encountered at least once                            |
-| Arena Cosmetics       | All arena-specific cosmetics unlocked                                     |
-| Keep Customization    | All furniture and cosmetic customization options unlocked                 |
-|-----------------------|---------------------------------------------------------------------------|
-
-**True Endgame**: After max completion, the game becomes an arena sandbox. All resource pressure is removed - the player has earned the ability to simply enjoy combat.
-
 
 # Related Documentation:
 ==================================================
-
-## Game Design Documents:
 |---------------------------------------------------------------------|------------------------------------------------------|
 | Document                                                            | Description                                          |
 |---------------------------------------------------------------------|------------------------------------------------------|
-| [Map Mode](/Documentation/GDD/MapMode.md)                           | Map Mode, districts, navigation, travel              |
-| [Location Mode](/Documentation/GDD/LocationMode.md)                 | Location Mode experience and interaction             |
+| [Map](/Documentation/GDD/Map.md)                                    | Map Mode, districts, navigation, travel              |
 | [Locations](/Documentation/GDD/Locations.md)                        | All enterable locations and their services           |
-| [Arena Mode](/Documentation/GDD/ArenaMode.md)                       | Combat system, controls, AI, rewards                 |
+| [Combat](/Documentation/GDD/Combat.md)                              | Combat system, controls, AI, rewards                 |
 | [User Interface](/Documentation/GDD/UserInterface.md)               | All UI panels, menus, and HUD elements               |
-| [Fighter Management](/Documentation/GDD/FighterManagement.md)       | Fighter stats, recruitment, training                 |
-| [Equipment Management](/Documentation/GDD/EquipmentManagement.md)   | Inventory, quality, degradation, upgrades            |
-| [Events](/Documentation/GDD/Events.md)                              | Event types, triggers, consequences                  |
+| [Fighters](/Documentation/GDD/Fighters.md)                          | Fighter stats, recruitment, training                 |
+| [Equipment](/Documentation/GDD/Equipment.md)                        | Inventory, quality, degradation, upgrades            |
 | [Time and Calendar](/Documentation/GDD/TimeAndCalendar.md)          | Time progression, scheduled fights                   |
-| [Player Controls](/Documentation/GDD/PlayerControls.md)             | Input schemes for all modes                          |
 |---------------------------------------------------------------------|------------------------------------------------------|
 
-## Development Planning:
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-| Document                                                                              | Description                                          |
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-| [Planning Overview](/Documentation/Planning/PlanningOverview.md)                       | Development planning index                           |
-| [Map Mode Plan](/Documentation/Planning/MapModeDevelopmentPlan.md)                     | Map Mode dependency graph and phases                 |
-| Location Mode Plan (TBD)                                                              | Location Mode dependencies                           |
-| Arena Mode Plan (TBD)                                                                 | Arena Mode dependencies                              |
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-
-## Progress Tracking:
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-| Document                                                                              | Description                                          |
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-| [Game Progress Overview](/Documentation/Tracking/GameProgressTrackingOverview.md)     | High-level progress summary                          |
-| [Map Mode Progress](/Documentation/Tracking/MapModeDevelopmentProgress.md)            | Map Mode feature status                              |
-| [Location Mode Progress](/Documentation/Tracking/LocationModeDevelopmentProgress.md)  | Location Mode feature status                         |
-| [Arena Mode Progress](/Documentation/Tracking/ArenaModeDevelopmentProgress.md)        | Arena Mode feature status                            |
-| [Framework Progress](/Documentation/Tracking/FrameworkProgressTracking.md)            | Core framework status                                |
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-
-## Technical Documentation:
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-| Document                                                                              | Description                                          |
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
-| [Framework Overview](/Documentation/Core%20Systems/FrameworkOverview.md)              | Technical framework documentation                    |
-|---------------------------------------------------------------------------------------|------------------------------------------------------|
