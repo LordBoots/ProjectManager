@@ -9,10 +9,10 @@ Viewer does not need these as the headers catch them - remove once pushed to git
 
 # [ Game Description ]:
 ==================================================
-**Title**: "Dynasty: Arena"
-**Genre**: Classic RPG with DC20 style stat checks and rolls
-**Setting**: Low-Fantasy Medieval
-**Era**: (800-1200 AD) Late iron age type setting, not much machinery but simple technology. For example the highest technology would be water wheel or windmill powered. 
+[ Title ]: "Dynasty: Arena"
+[ Genre ]: Classic RPG with DC20 style stat checks and rolls
+[ Setting ]: Low-Fantasy Medieval
+[ Era ]: (800-1200 AD) Late iron age type setting, not much machinery but simple technology. For example the highest technology would be water wheel or windmill powered. 
 
 Dynasty Arena is a medieval RPG game set in a single town/region. The player starts as a lowly commoner making their way to a new life of fame and fortune.
 live is a stuggle to survive in the town and make a name for themselves.
@@ -194,6 +194,7 @@ Fighters are one of the players main assets. They are used almost exclusively in
  - A standard day is 16 hours long. (8am - 12am).
  - Sleeping in a Tavern reduces the chances of negative things happening while the player sleeps.
  - The current Tavern level dictates what buffs or lack there of the player recieves while Sleeping.
+ - Sleeping in a good room will give a [Well Rested] buff for a short period of time.
 
 ## - Sleep Deprevation:
  [DEBUFF]

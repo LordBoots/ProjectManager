@@ -40,7 +40,7 @@
       "x": 2576,
       "y": -624,
       "w": 1280,
-      "h": 859.1780821917807,
+      "h": 875.7718405939034,
       "styles": {},
       "imageW": 1168,
       "imageH": 784,
@@ -311,7 +311,7 @@
       "x": 464,
       "y": -768,
       "w": 416,
-      "h": 277.7721518987342,
+      "h": 294.3660219568701,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -345,7 +345,7 @@
       "x": 1184,
       "y": -768,
       "w": 416,
-      "h": 277.3333333333333,
+      "h": 293.92698007944284,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -379,7 +379,7 @@
       "x": 304,
       "y": -368,
       "w": 416,
-      "h": 277.7721518987342,
+      "h": 294.3660219568701,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -413,7 +413,7 @@
       "x": 832,
       "y": -368,
       "w": 416,
-      "h": 277.11392405063293,
+      "h": 293.70757079674246,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -447,7 +447,7 @@
       "x": 1872,
       "y": -368,
       "w": 416,
-      "h": 277.7721518987342,
+      "h": 294.3660219568701,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -481,7 +481,7 @@
       "x": 1344,
       "y": -368,
       "w": 416,
-      "h": 277.11392405063293,
+      "h": 293.70757079674246,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -542,12 +542,12 @@
     {
       "id": "n-3jovrb",
       "type": "text",
-      "header": "",
+      "header": "Player Choice:",
       "text": "Custom Character",
       "x": 240,
       "y": -464,
-      "w": 192,
-      "h": 32,
+      "w": 224,
+      "h": 64,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#4a5870",
@@ -564,39 +564,7 @@
         "imageHasTitle": "",
         "imageTitlePos": "top",
         "imageTitleAlign": "center",
-        "textHasHeader": "",
-        "headerFontSize": "17",
-        "labelIconEnabled": "",
-        "labelIcon": "📌",
-        "labelHideText": ""
-      }
-    },
-    {
-      "id": "n-ewe8u7",
-      "type": "text",
-      "header": "",
-      "text": "Premade Character",
-      "x": 912,
-      "y": -640,
-      "w": 192,
-      "h": 32,
-      "styles": {
-        "bg": "#ffffff",
-        "borderColor": "#4a5870",
-        "topBand": "",
-        "shadow": "1",
-        "radius": "12",
-        "fontSize": "16",
-        "fontWeight": "400",
-        "fontStyle": "normal",
-        "textAlign": "center",
-        "textDecoration": "none",
-        "fontColor": "#1a1d24",
-        "fontFamily": "inherit",
-        "imageHasTitle": "",
-        "imageTitlePos": "top",
-        "imageTitleAlign": "center",
-        "textHasHeader": "",
+        "textHasHeader": "1",
         "headerFontSize": "17",
         "labelIconEnabled": "",
         "labelIcon": "📌",
@@ -761,7 +729,7 @@
         "labelIcon": "📌",
         "labelHideText": ""
       },
-      "header": "Three Coins Inn"
+      "header": "Street Camp"
     },
     {
       "id": "n-o0uldr",
@@ -962,7 +930,7 @@
       "x": -224,
       "y": -368,
       "w": 416,
-      "h": 277.875,
+      "h": 294.4688700581359,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -996,7 +964,7 @@
       "x": -224,
       "y": -768,
       "w": 416,
-      "h": 277.875,
+      "h": 306.46876510905895,
       "styles": {
         "bg": "#ffffff",
         "borderColor": "#5cbc67",
@@ -1521,6 +1489,70 @@
         "labelHideText": ""
       },
       "header": "Placeholder map:\nGeneral locations ar fixed but the actual map will differ significantly"
+    },
+    {
+      "id": "n-s6xwnj",
+      "type": "text",
+      "header": "Player Choice:",
+      "text": "Premade Character",
+      "x": 912,
+      "y": -656,
+      "w": 224,
+      "h": 64,
+      "styles": {
+        "bg": "#ffffff",
+        "borderColor": "#4a5870",
+        "topBand": "",
+        "shadow": "1",
+        "radius": "12",
+        "fontSize": "16",
+        "fontWeight": "400",
+        "fontStyle": "normal",
+        "textAlign": "center",
+        "textDecoration": "none",
+        "fontColor": "#1a1d24",
+        "fontFamily": "inherit",
+        "imageHasTitle": "",
+        "imageTitlePos": "top",
+        "imageTitleAlign": "center",
+        "textHasHeader": "1",
+        "headerFontSize": "17",
+        "labelIconEnabled": "",
+        "labelIcon": "📌",
+        "labelHideText": ""
+      }
+    },
+    {
+      "id": "n-64kno3",
+      "type": "text",
+      "header": "From: Start New Game",
+      "text": "",
+      "x": 928,
+      "y": -816,
+      "w": 208,
+      "h": 32,
+      "styles": {
+        "bg": "#ffffff",
+        "borderColor": "#4a5870",
+        "topBand": "",
+        "shadow": "1",
+        "radius": "12",
+        "fontSize": "16",
+        "fontWeight": "400",
+        "fontStyle": "normal",
+        "textAlign": "center",
+        "textDecoration": "none",
+        "fontColor": "#1a1d24",
+        "fontFamily": "inherit",
+        "imageHasTitle": "",
+        "imageTitlePos": "top",
+        "imageTitleAlign": "center",
+        "textHasHeader": "1",
+        "headerFontSize": "17",
+        "labelIconEnabled": "",
+        "labelIcon": "📌",
+        "labelHideText": ""
+      }
     }
   ],
   "edges": [
@@ -1820,16 +1852,17 @@
         "n-4r5bvq",
         "n-rf6b1h",
         "n-3jovrb",
-        "n-ewe8u7",
         "n-t2i6oi",
-        "n-5mfow8"
+        "n-5mfow8",
+        "n-s6xwnj",
+        "n-64kno3"
       ]
     }
   ],
   "view": {
-    "x": 289.3146290010733,
-    "y": 581.777417648128,
-    "scale": 0.273317820058577
+    "x": 237.56520554047773,
+    "y": 1122.5981846829554,
+    "scale": 0.4506249035919669
   },
   "snapGrid": true
 }
