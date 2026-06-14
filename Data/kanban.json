@@ -5,19 +5,6 @@
       "title": "Todo",
       "cards": [
         {
-          "id": "k-cvxmmw",
-          "title": "A card",
-          "icon": "",
-          "description": "That can be edited",
-          "subtasks": [
-            {
-              "id": "s-palvpb",
-              "label": "A task that can be aded",
-              "done": false
-            }
-          ]
-        },
-        {
           "id": "k-hthszj",
           "title": "Card",
           "icon": "⚙",
@@ -26,6 +13,19 @@
             {
               "id": "s-b1ttv6",
               "label": "Task",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "k-cvxmmw",
+          "title": "A card",
+          "icon": "Full Game",
+          "description": "That can be edited",
+          "subtasks": [
+            {
+              "id": "s-palvpb",
+              "label": "A task that can be aded",
               "done": false
             }
           ]
