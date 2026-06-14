@@ -11,7 +11,7 @@ from .connection import apply_shell_connections, layout_shell_grid
 from .doors import apply_doors
 from .geometry import build_rectangle_edges
 from .model_index import build_index_from_pool_names
-from .placement import clear_generated_output, place_shell
+from .placement import clear_generated_output, place_shell, recenter_shell_empty
 from .properties import (
     get_enabled_pillar_pool_names,
     get_enabled_styles,
@@ -94,9 +94,10 @@ class HSG_OT_generate_shells(Operator):
             length = random_dimension(cell_rng, length_min, length_max)
             height_pool = cell_rng.choice(available_heights)
 
-            styles = get_enabled_styles(props, height_pool)
-            if not styles:
-                styles = index.styles_for_height(height_pool)
+            styles = index.styles_for_height(height_pool)
+            if props.mix_styles:
+                checked_styles = set(get_enabled_styles(props, height_pool))
+                styles = [style for style in styles if style in checked_styles]
             if not styles:
                 self.report({"ERROR"}, f"No styles available for {height_pool} walls.")
                 return {"CANCELLED"}
@@ -161,14 +162,24 @@ class HSG_OT_generate_shells(Operator):
                 ensure_door=props.ensure_door,
             )
             warnings.extend(door_warnings)
+            recenter_shell_empty(shell)
 
         if warnings:
             self.report({"WARNING"}, f"Generated {len(shells)} shell(s) with {len(warnings)} warning(s).")
-            for message in warnings[:5]:
-                print(f"[HouseShellGenerator] {message}")
+            _print_warning_summary(warnings)
         else:
             self.report({"INFO"}, f"Generated {len(shells)} shell(s).")
         return {"FINISHED"}
+
+
+def _print_warning_summary(warnings: list[str]) -> None:
+    counts: dict[str, int] = {}
+    for message in warnings:
+        counts[message] = counts.get(message, 0) + 1
+
+    print(f"[HouseShellGenerator] Warning summary ({len(warnings)} total, {len(counts)} unique):")
+    for message, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+        print(f"[HouseShellGenerator] x{count}: {message}")
 
 
 classes = (

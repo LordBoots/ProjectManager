@@ -58,9 +58,6 @@ class ModelIndex:
         for key in self.walls.keys():
             if key[0] == height:
                 styles.add(key[1])
-        for key in self.doors.keys():
-            if key[0] == height:
-                styles.add(key[1])
         return sorted(styles)
 
 

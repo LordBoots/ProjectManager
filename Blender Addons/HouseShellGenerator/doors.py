@@ -6,7 +6,7 @@ import random
 
 import bpy
 
-from .constants import MAX_DOORS_PER_SHELL
+from .constants import MAX_DOORS_PER_SHELL, WALL_WIDTH_FULL
 from .data_models import Shell
 from .geometry import outward_rotation_z, slot_center
 from .model_index import ModelIndex
@@ -34,6 +34,8 @@ def apply_doors(
             continue
         for slot_index, slot in enumerate(edge.slots):
             if slot.is_door or slot.is_window:
+                continue
+            if slot.width != WALL_WIDTH_FULL:
                 continue
             if "Plain" not in slot.wall_type and "Half" not in slot.wall_type:
                 continue

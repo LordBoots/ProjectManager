@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bpy
+from mathutils import Vector
 
 from .constants import GENERATED_ROOT_COLLECTION
 from .data_models import Shell
@@ -109,3 +110,25 @@ def delete_objects_by_name(names: list[str]) -> None:
         obj = bpy.data.objects.get(name)
         if obj is not None:
             bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def recenter_shell_empty(shell: Shell) -> None:
+    empty = bpy.data.objects.get(shell.root_empty_name)
+    if empty is None:
+        return
+
+    children = [child for child in empty.children if child.type != "EMPTY"]
+    if not children:
+        return
+
+    world_matrices = {child.name: child.matrix_world.copy() for child in children}
+    center = Vector((0.0, 0.0, 0.0))
+    for child in children:
+        center += child.matrix_world.translation
+    center /= len(children)
+
+    empty.location = center
+
+    # Keep generated components visually fixed while moving the parent origin.
+    for child in children:
+        child.matrix_world = world_matrices[child.name]
