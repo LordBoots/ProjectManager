@@ -71,17 +71,23 @@ class HSG_SceneProperties(PropertyGroup):
     blueprint_object: PointerProperty(name="Blueprint", type=bpy.types.Object)
 
     wall_collections: CollectionProperty(type=HSG_CollectionItem)
+    short_wall_collections: CollectionProperty(type=HSG_CollectionItem)
+    tall_wall_collections: CollectionProperty(type=HSG_CollectionItem)
     pillar_collections: CollectionProperty(type=HSG_CollectionItem)
     tall_styles: CollectionProperty(type=HSG_StyleItem)
     short_styles: CollectionProperty(type=HSG_StyleItem)
 
     active_wall_index: IntProperty(default=0)
+    active_short_wall_index: IntProperty(default=0)
+    active_tall_wall_index: IntProperty(default=0)
     active_pillar_index: IntProperty(default=0)
 
 
 def get_enabled_wall_pool_names(scene: bpy.types.Scene) -> list[str]:
     props = scene.hsg_props
-    return [item.collection_name for item in props.wall_collections if item.enabled]
+    names = [item.collection_name for item in props.short_wall_collections if item.enabled]
+    names.extend(item.collection_name for item in props.tall_wall_collections if item.enabled)
+    return names
 
 
 def get_enabled_pillar_pool_names(scene: bpy.types.Scene) -> list[str]:
@@ -102,13 +108,21 @@ def rescan_collection_lists(scene: bpy.types.Scene) -> tuple[int, int]:
 
     props = scene.hsg_props
     props.wall_collections.clear()
+    props.short_wall_collections.clear()
+    props.tall_wall_collections.clear()
     props.pillar_collections.clear()
 
     wall_pool_names = find_wall_pool_names()
     pillar_pool_names = find_pillar_pool_names()
 
     for pool_name in wall_pool_names:
-        item = props.wall_collections.add()
+        height_pool = _height_pool_for_wall_collection(pool_name)
+        if height_pool == HEIGHT_SHORT:
+            item = props.short_wall_collections.add()
+        elif height_pool == HEIGHT_TALL:
+            item = props.tall_wall_collections.add()
+        else:
+            item = props.wall_collections.add()
         item.collection_name = pool_name
         item.enabled = True
 
@@ -156,3 +170,21 @@ def rescan_collection_lists(scene: bpy.types.Scene) -> tuple[int, int]:
             item.enabled = True
 
     return len(wall_pool_names), len(pillar_pool_names)
+
+
+def _height_pool_for_wall_collection(pool_name: str) -> str | None:
+    from .naming import parse_wall_collection_name, parse_wall_name
+
+    parsed = parse_wall_collection_name(pool_name)
+    if parsed is not None:
+        return parsed[0]
+
+    collection = bpy.data.collections.get(pool_name)
+    if collection is None:
+        return None
+
+    for obj in collection.all_objects:
+        wall = parse_wall_name(obj.name)
+        if wall is not None:
+            return wall.height_pool
+    return None

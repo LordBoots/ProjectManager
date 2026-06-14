@@ -154,6 +154,7 @@ Addon location: `/Blender Addons/HouseShellGenerator`
             - Plain_4
             - Half_1
             - Half_2
+            - Half_3
             - SmallWindow_1
             - SimpleWindow_1
             - ArchedWindow_1
@@ -172,6 +173,7 @@ Addon location: `/Blender Addons/HouseShellGenerator`
             - Plain_4
             - Half_1
             - Half_2
+            - Half_3
             - SmallWindow_1
             - SimpleWindow_1
             - ArchedWindow_1

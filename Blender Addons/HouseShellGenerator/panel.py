@@ -28,6 +28,28 @@ class HSG_UL_pillar_collections(UIList):
             layout.label(text="")
 
 
+class HSG_UL_short_wall_collections(UIList):
+    bl_idname = "HSG_UL_short_wall_collections"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {"DEFAULT", "COMPACT"}:
+            layout.prop(item, "enabled", text=item.collection_name, toggle=True)
+        elif self.layout_type == "GRID":
+            layout.alignment = "CENTER"
+            layout.label(text="")
+
+
+class HSG_UL_tall_wall_collections(UIList):
+    bl_idname = "HSG_UL_tall_wall_collections"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {"DEFAULT", "COMPACT"}:
+            layout.prop(item, "enabled", text=item.collection_name, toggle=True)
+        elif self.layout_type == "GRID":
+            layout.alignment = "CENTER"
+            layout.label(text="")
+
+
 class HSG_UL_tall_styles(UIList):
     bl_idname = "HSG_UL_tall_styles"
 
@@ -58,22 +80,45 @@ class HSG_PT_main_panel(Panel):
         layout.prop(props, "generation_mode")
         layout.operator("hsg.rescan_collections", icon="FILE_REFRESH")
 
-        if len(props.wall_collections) == 0 and len(props.pillar_collections) == 0:
+        if (
+            len(props.short_wall_collections) == 0
+            and len(props.tall_wall_collections) == 0
+            and len(props.pillar_collections) == 0
+        ):
             layout.label(text="No collections listed — click Rescan", icon="INFO")
 
         box = layout.box()
         box.label(text="Collections", icon="OUTLINER_COLLECTION")
-        row = box.row()
-        row.template_list("HSG_UL_wall_collections", "", props, "wall_collections", props, "active_wall_index", rows=3)
-        col = row.column(align=True)
-        col.label(text="Walls")
 
+        box.label(text="Short Walls")
+        row = box.row()
+        row.template_list(
+            "HSG_UL_short_wall_collections",
+            "",
+            props,
+            "short_wall_collections",
+            props,
+            "active_short_wall_index",
+            rows=3,
+        )
+
+        box.label(text="Tall Walls")
+        row = box.row()
+        row.template_list(
+            "HSG_UL_tall_wall_collections",
+            "",
+            props,
+            "tall_wall_collections",
+            props,
+            "active_tall_wall_index",
+            rows=3,
+        )
+
+        box.label(text="Pillars")
         row = box.row()
         row.template_list(
             "HSG_UL_pillar_collections", "", props, "pillar_collections", props, "active_pillar_index", rows=2
         )
-        col = row.column(align=True)
-        col.label(text="Pillars")
 
         box = layout.box()
         box.label(text="Options", icon="SETTINGS")
@@ -119,6 +164,8 @@ class HSG_PT_main_panel(Panel):
 
 classes = (
     HSG_UL_wall_collections,
+    HSG_UL_short_wall_collections,
+    HSG_UL_tall_wall_collections,
     HSG_UL_pillar_collections,
     HSG_UL_tall_styles,
     HSG_UL_short_styles,
