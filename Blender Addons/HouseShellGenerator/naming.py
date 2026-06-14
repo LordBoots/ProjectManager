@@ -22,7 +22,8 @@ from .constants import (
 _WALL_POOL_PATTERN = re.compile(r"^\[Walls_(Tall|Short)_([^\]]+)\]$")
 
 # Wall objects: [Wall_Short_Brick_Plain_1]
-_WALL_OBJECT_PATTERN = re.compile(r"^\[Wall_(Tall|Short)_(.+?)_(.+?)\]$")
+# Door replacement models: [Door_Tall_BrickWoodBottom_Door_2]
+_WALL_OBJECT_PATTERN = re.compile(r"^\[(Wall|Door)_(Tall|Short)_(.+?)_(.+?)\](?:\.\d{3})?$")
 
 # Pillar pool collections: [Pillars_Tall]  [Pillars_Short]
 _PILLAR_POOL_PATTERN = re.compile(r"^\[Pillars_(Tall|Short)\]$")
@@ -66,10 +67,11 @@ def parse_wall_name(name: str) -> Optional[ParsedWallName]:
     match = _WALL_OBJECT_PATTERN.match(name.strip())
     if not match:
         return None
-    height_pool = _normalize_height(match.group(1))
-    style = match.group(2)
-    wall_type = match.group(3)
-    is_door = DOOR_TYPE_KEYWORD.lower() in wall_type.lower()
+    part_type = match.group(1)
+    height_pool = _normalize_height(match.group(2))
+    style = match.group(3)
+    wall_type = match.group(4)
+    is_door = part_type == "Door" or DOOR_TYPE_KEYWORD.lower() in wall_type.lower()
     is_window = WINDOW_TYPE_KEYWORD.lower() in wall_type.lower()
     width = WALL_WIDTH_HALF if HALF_TYPE_KEYWORD.lower() in wall_type.lower() else WALL_WIDTH_FULL
     return ParsedWallName(

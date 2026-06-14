@@ -1,7 +1,7 @@
 bl_info = {
     "name": "House Shell Generator",
     "author": "Hogan",
-    "version": (0, 1, 4),
+    "version": (0, 1, 5),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > House Shells",
     "description": "Generate procedural house shells from wall and pillar model collections",

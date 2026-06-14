@@ -34,18 +34,23 @@ def build_rectangle_edges(width: float, length: float) -> list[Edge]:
 
 
 def outward_rotation_z(direction: str, start: tuple[float, float], end: tuple[float, float]) -> float:
-    """Return Z rotation so default wall front (Y+) faces away from shell interior."""
+    """Return Z rotation so authored wall details face away from shell interior."""
     dx = end[0] - start[0]
     dy = end[1] - start[1]
     if direction == "X+":
-        return math.pi if dy >= 0 else 0.0
+        return _flip_front(math.pi if dy >= 0 else 0.0)
     if direction == "X-":
-        return 0.0 if dy >= 0 else math.pi
+        return _flip_front(0.0 if dy >= 0 else math.pi)
     if direction == "Y+":
-        return -math.pi / 2 if dx >= 0 else math.pi / 2
+        return _flip_front(-math.pi / 2 if dx >= 0 else math.pi / 2)
     if direction == "Y-":
-        return math.pi / 2 if dx >= 0 else -math.pi / 2
+        return _flip_front(math.pi / 2 if dx >= 0 else -math.pi / 2)
     raise ValueError(f"Unknown direction: {direction}")
+
+
+def _flip_front(rotation_z: float) -> float:
+    """The authored asset front is opposite the original placement assumption."""
+    return rotation_z + math.pi
 
 
 def slot_center(
