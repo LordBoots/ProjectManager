@@ -101,7 +101,11 @@ def parse_pillar_collection(name):
 
 
 def parse_wall_object(name):
-    """[Wall_<Height>_<Style>_<Type>_<Index>] -> dict or None.
+    """Parse a wall or door source object name -> dict or None.
+
+    Wall objects: [Wall_<Height>_<Style>_<Type>_<Index>]
+    Door objects: [Door_<Height>_<Style>_<Index>] or
+                  [Door_<Height>_<Style>_Door_<Index>]
 
     Returns {height, style, type_name, category, width}.
     Style is assumed to be a single token (no underscores), which matches the
@@ -109,14 +113,24 @@ def parse_wall_object(name):
     """
     inner = _strip_brackets(name)
     parts = inner.split("_")
-    if len(parts) < 4 or parts[0] != "Wall":
+    if len(parts) < 4:
         return None
-    height = parts[1]
-    style = parts[2]
-    # index is the last token, type-name the token before it
-    type_name = parts[-2]
-    category = _category_from_type(type_name)
-    width = HALF_WIDTH if HALF_KEYWORD.lower() in type_name.lower() else FULL_WIDTH
+
+    if parts[0] == "Wall":
+        height = parts[1]
+        style = parts[2]
+        type_name = parts[-2]
+        category = _category_from_type(type_name)
+        width = HALF_WIDTH if HALF_KEYWORD.lower() in type_name.lower() else FULL_WIDTH
+    elif parts[0] == "Door":
+        height = parts[1]
+        style = parts[2]
+        type_name = parts[-2] if len(parts) >= 5 else DOOR_KEYWORD
+        category = "Door"
+        width = FULL_WIDTH
+    else:
+        return None
+
     return {
         "height": height,
         "style": style,
