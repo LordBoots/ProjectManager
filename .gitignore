@@ -33,6 +33,10 @@ yarn-error.log*
 .cache/
 .temp/
 
+# Python (Blender addon source)
+__pycache__/
+*.py[cod]
+
 # Suggestions / PeerJS (not part of repo sync; dev uses local file; viewer outbox)
 Data/suggestions.json
 Data/suggestions-outbox.json

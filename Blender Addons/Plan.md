@@ -5,16 +5,59 @@
     The user will then stack these to make multi-story buildings if they desire. Multi-story builds are out of scope for this addon.
     All building walls are placed in one of the 4 coordinate directions. (X+, X-, Y+, Y-). There are no odd angles (only 90 degree angles).
     Walls are placed with no spacing between them within a wall side.
-    Collections to be used are always formatted as '[PartType_<HeightPool>_<Style>]'. This is so the addon can auto-scan for collections that start with the correct prefixex.
+    Collections to be used are auto-scanned by their bracketed prefix:
+        - Wall collections: '[Walls_<HeightPool>_<Style>]'  (e.g. [Walls_Tall_Brick])
+        - Pillar collections: '[Pillars_<HeightPool>]'        (e.g. [Pillars_Tall])  -- pillars have NO style.
     The Shells themselves do not have a "front" or "back" side. The user can orient the shells to the desired direction by rotating them in the viewport.
         
     The output should be a grid of "building shells" that can be used to create larger buildings by stacking or connecting them.
     The goal is not to output fully formed buildings, but rather to output the building shell components that can be used to create larger buildings to reduce stress and time on asset assembly.
 
+    There are TWO generation modes, BOTH core features from the first release:
+        - Random Grid mode: shells are generated as random rectangles from the dimension ranges and grid options.
+        - Blueprint mode: shells are generated from a hand-drawn, grid-snapped floor plan using an interactive
+          modal viewport editor (see "# Blueprint Mode"). This lets the user draw non-rectangular footprints
+          (L-shapes, T-shapes, courtyards) that Random Grid mode cannot produce.
+    Both modes are pure "edge producers" that feed the SAME placement pipeline.
+
     Addon to be built in the /Blender Addons/HouseShellGenerator folder.
+
+# Architecture / Code structure:
+    Keep the addon to a FEW core modules, not many tiny split ones, so the flow is easy to track.
+    Suggested layout:
+        - __init__.py  : bl_info, register/unregister, PropertyGroups, the N-panel, and the operators (all the Blender/bpy-facing glue).
+        - core.py      : the pure generation logic in one place — data model (Shell/Edge/Slot), name parsing, model index,
+                         width subdivision, and the geometry/placement math. Keep bpy usage minimal here so the math stays testable.
+        - blueprint.py : the modal Blueprint editor — GPU grid/edge/point drawing, mouse handling, 1.25m grid snapping,
+                         half/full colour coding, and conversion of the drawn loops into the shared edge list.
+                         Self-contained bpy/gpu code, kept separate from the N-panel glue and the pure math.
+        (blueprint.py is justified as its own module because the modal GPU editor is substantial and self-contained.
+         Otherwise prefer fewer files; only split core.py further if it genuinely becomes unwieldy.)
+
+    Edge-based data structure from the get-go (both modes feed it):
+        - A shell is stored as an ordered list of EDGES. Each edge holds: direction (X+/X-/Y+/Y-), start/end points,
+          length, and the ordered list of SLOTS (walls) that fill it. Pillars attach at edge ends/seams.
+        - Random Grid mode builds the 4 edges of a rectangle. Blueprint mode (core feature, see "# Blueprint Mode")
+          produces the edges from a hand-drawn, grid-snapped floor plan. BOTH produce the same edge list and feed the
+          SAME placement pipeline.
+        - This keeps each mode a pure "edge producer" with zero changes to placement, and leaves room for future
+          per-edge regeneration/editing (regen one wall side, one edge's pillars, etc.).
+        - The edge list is retained after the build (serialized onto the shell's root empty) so edges/walls/pillars/doors
+          stay linkable to their shell for later editing.
 
 # Panel and Inputs:
     The addon will use a panel in the Blender interface (3D Viewport sidebar / N-panel) to allow the user to input various settings such as:
+
+    Mode selection (core):
+    - generation_mode: enum, "Random Grid" or "Blueprint".
+        - Random Grid: shells are generated from the dimension ranges + grid options (rows/cols/spacing).
+        - Blueprint: shells are generated from the hand-drawn floor plan produced by the modal grid editor.
+    - "Draw Blueprint" operator button (shown in Blueprint mode): launches the modal grid editor described in
+      "# Blueprint Mode". After drawing, the captured points/edges are stored and used by "Generate Shells".
+      In Blueprint mode the dimension ranges and grid columns/rows/spacing are IGNORED (the footprint(s) and shell
+      count come from the drawing). All other settings (wall/pillar collections, height pool, styles, pillar/door
+      toggles, probabilities, seed) still apply.
+
     Bool:
     - connect_shells: 
         Should the shells be connected to each other?
@@ -46,8 +89,8 @@
     
     Model collections:
     Collections are seperated by style. So for instance all BrickWoodBottom walls will be in the same collection, all Brick walls will be in the same collection, etc.
-    - The collection or collections of wall models to use. (list of checkboxes, auto-populated from the '[PartType_<HeightPool>_<Style>]' prefix scan)
-    - The collection or collections of pillar models to use. (list of checkboxes, auto-populated from the '[PartType_<HeightPool>_<Style>]' prefix scan)
+    - The collection or collections of wall models to use. (list of checkboxes, auto-populated from the '[Walls_<HeightPool>_<Style>]' prefix scan)
+    - The collection or collections of pillar models to use. (list of checkboxes, auto-populated from the '[Pillars_<HeightPool>]' prefix scan)
     - A "Rescan Collections" button to refresh the lists after the user adds/renames collections.
 
     Int:
@@ -74,16 +117,64 @@
     Operator:
     - A "Generate Shells" button that runs the generation with the current settings.
 
+# Blueprint Mode (Core Feature):
+    Blueprint mode is one of the two generation modes (alongside Random Grid) and ships in the first release.
+    It replaces random rectangle generation with a hand-drawn floor plan, but produces the SAME edge list and feeds
+    the SAME placement pipeline (see "# Logic Flow" step 4). It is implemented as a modal viewport editor modeled on
+    the working Floor Plan editor in /Blender Addons/example.py (GPU grid + point/edge drawing).
+
+    ## Interaction model (modal editor):
+        - Launched from the N-panel via the "Draw Blueprint" button (a modal operator).
+        - Draws a grid on the Z=0 plane in world space using a GPU draw handler (POST_VIEW), exactly like example.py.
+        - Grid cell size is FIXED at 1.25m — the half-wall width. This is the minimum drawable segment, so every point
+          and every edge automatically lands on a valid wall boundary ("locked to half-wall minimums").
+        - All clicks snap to the 1.25m grid (snap on by default).
+        - Controls (mirroring example.py):
+            - LMB: place a point, or connect the selected point to a clicked point to form an edge.
+            - RMB: delete the point (and its connected edges) under the cursor.
+            - MMB: deselect the active point.
+            - ESC / Enter: finish drawing and hand the points/edges to the generator.
+            - C: clear the layout.  E: export/debug dump (optional).
+        - An on-screen HUD (POST_PIXEL) shows point/edge counts, grid size, snap state, and the control hints.
+
+    ## Constraints enforced while drawing:
+        - Edges must be axis-aligned (horizontal or vertical only). Walls only run X+/-, Y+/-; diagonal edges are
+          invalid, drawn in the error colour, and excluded from generation.
+        - Every edge length is a multiple of 1.25m by construction (grid snapping guarantees it).
+        - The drawn shape should form one or more CLOSED rectilinear loops. Each closed loop becomes one shell footprint,
+          so blueprint mode supports non-rectangular footprints (L-shapes, T-shapes, courtyards). Open/unclosed loops
+          are reported and skipped.
+
+    ## Colour coding (shader feedback):
+        Drawn edges are colour-coded so the user can see how each wall run subdivides BEFORE generating:
+        - Full 2.5m wall increments are drawn in one colour.
+        - The leftover 1.25m HALF-wall increment (present when an edge spans an odd number of 1.25m cells) is drawn in
+          a second colour.
+        - Invalid edges (diagonal / off-grid) are drawn in a third "error" colour.
+        Grid lines themselves are drawn subtly (low-alpha grey) so they don't compete with the edges.
+        This gives immediate confirmation that every wall side is exactly fillable with 2.5m + 1.25m walls (see
+        "# Hard constraints") and shows at a glance where half walls will land.
+
+    ## From drawing to edges:
+        - On finish, the editor converts each closed loop's points/edges into the shell's ordered EDGE list
+          (direction, start/end, length, slots) — exactly the structure Random Grid mode produces.
+        - Each edge's length feeds the same width-subdivision solver (2.5m + 1.25m slots), and the same
+          wall/pillar/door pipeline runs unchanged.
+        - The edge list is serialized onto the shell's root empty, identical to Random Grid output, so later per-edge
+          editing applies to both modes.
+
 # Model configuration:
 ## Wall Models:
-    Name Example: [Walls_Tall_BrickWoodBottom_Plain_1]
+    Note on singular vs plural: the COLLECTION (pool) prefix is plural ('Walls_'/'Pillars_'),
+    the OBJECT prefix is singular ('Wall_'/'Pillar_').
+    Collection (pool) Name Example: [Walls_Tall_BrickWoodBottom]
+    Object Name Example: [Wall_Tall_BrickWoodBottom_Plain_1]
     Everything is considered a 2.5m wide wall apart from the objects listed below:
      - [Wall_Tall_BrickWoodBottom_Half_1] <- These are the 1.25m wide walls. We use the keyword "Half" to identify them. 
      - [Wall_Tall_BrickWoodBottom_Door_1] <- This is a door. We use the keyword "Door" to identify them.
-    Name parts explained:
+    Object name parts explained:
     1. PartType:
-        - Walls
-        - Pillars
+        - Wall  (object)  /  Walls  (collection)
     2. Height Pool:
         - Tall
         - Short
@@ -167,16 +258,20 @@
      - Door_4
 
 ## Pillar Models:
-    Name Example: [Pillars_Tall_Corner_1]
-    Name parts explained:
+    Pillars have NO style. They are organised only by height pool.
+    Collection (pool) Name Example: [Pillars_Tall]
+    Object Name Example: [Pillar_Tall_Corner_1]
+    Object name parts explained:
     1. PartType:
-        - Pillars
+        - Pillar
     2. Height Pool:
         - Tall
         - Short
     3. Type:
         - Corner
         - Seam
+    4. Index:
+        - 1, 2, ... (allows multiple variants of the same type)
     Pillars come in two POOLS:
      Tall Pillars:
      - [Pillar_Tall_Corner_1]
@@ -184,21 +279,11 @@
      Short Pillars:
      - [Pillar_Short_Corner_1]
      - [Pillar_Short_Seam_1]
-     Name parts explained:
-     1. PartType:
-        - Pillars
-     2. Height Pool:
-        - Tall
-        - Short
-     3. Type:
-        - Corner
-        - Seam
 
     Wall thickness is irrelevant to the placement logic. All models are authored to snap together, so only the width (X) matters for layout. No clearance or thickness compensation is needed.
 
     The models origins will always be the center, absolute bottom of the model. This is true for both walls and pillars.
     Models from collection pools will always be orientated with the long axis of the model running parallel to the X axis of the Blender world space. So the "front" of the model will face the Y+ axis.
-    (pressing numpad 1 should show the model's front side in the viewport if the model is rotated to the correct default orientation.)
 
 # Choices the logic needs to make:
     - The dimensions of each shell. (random within the width/length min/max range, snapped to 1.25m increments with a minimum total of 5m which is two 2.5m wide walls)
@@ -219,9 +304,12 @@
 # Logic Flow:
     1. Scan & select:
         - On panel draw (or via the rescan button), scan the blend file for collections prefixed with '[Walls_<HeightPool>_<Style>]' and list them as checkboxes.
-        - On panel draw (or via the rescan button), scan the blend file for collections prefixed with '[Pillars_<HeightPool>_<Style>]' and list them as checkboxes.
+        - On panel draw (or via the rescan button), scan the blend file for collections prefixed with '[Pillars_<HeightPool>]' and list them as checkboxes.
         - The user selects one or more wall collections and (optionally) one or more pillar collections.
-        - The user sets the dimension ranges, grid options, probabilities, and toggles, then presses "Generate Shells".
+        - The user picks the generation_mode (Random Grid or Blueprint).
+        - Random Grid: the user sets the dimension ranges, grid options, probabilities, and toggles, then presses "Generate Shells".
+        - Blueprint: the user presses "Draw Blueprint" to draw the floor plan in the modal editor (see "# Blueprint Mode"),
+          sets probabilities and toggles, then presses "Generate Shells".
 
     2. Validate:
         - At least one wall collection is selected. If pillar options are enabled, at least one pillar collection is selected.
@@ -229,9 +317,13 @@
         - Parse the selected collections and index the contained models by height pool, style, type, and width (from naming convention and/or measured bounding box). Report any models that fail to parse.
         - Models with the "Door" keyword are set aside in a separate door pool. They are excluded from the general wall type pools and take no part in the initial build.
 
-    3. Per shell (for each cell in the rows x columns grid):
-        - Seed the RNG (base seed + cell index) so each shell is independently repeatable.
-        - Pick the shell width and length from the min/max ranges.
+    3. Per shell:
+        - Random Grid mode: iterate each cell in the rows x columns grid; build the 4 edges of a rectangle whose
+          width/length are picked from the min/max ranges.
+        - Blueprint mode: iterate each closed loop drawn in the editor; build that loop's edges directly from the
+          drawn, grid-snapped points. (Edge lengths are already valid multiples of 1.25m by construction.)
+        - From here BOTH modes share the rest of the per-shell flow, operating on the produced edge list:
+        - Seed the RNG (base seed + cell/loop index) so each shell is independently repeatable.
         - Pick the height pool (Tall or Short).
         - Pick the style. If mix_styles is off, pick a single style for the whole shell. If on, pick per-wall from the user's selected styles using the style probability.
         - For each of the 4 sides, solve the width subdivision: a list of 2.5m and 1.25m slots that sums exactly to the side length.
@@ -266,17 +358,24 @@
     - Editing/repair tools for generated shells. (the user edits the shells with normal Blender tools)
 
 # To consider before starting development:
-## from_blueprint mode:
-Uses A blender mesh as the blueprint and generates a shell from it
-The mesh would be a set of planes connected to each other at their edges, representing a floor plan.
+## Blueprint mode (now core — see "# Blueprint Mode"):
+The interactive, grid-snapped modal editor is the core blueprint input and is built from the start. The addon is
+"edge based" so both Random Grid and Blueprint mode feed the same per-edge placement pipeline. Holding the edge data
+structure after the build (serialized onto the shell's root empty) is required so individual objects stay linkable to
+their shell/edge group, which also enables the per-edge expansions below.
 
-We would then use some sort of shape detection algorithm to find the perimeter of the shape.
-We would then extract the individual edge definitions from the shape.
-We would then use the existing placement logic to fill in each edge segment.
+## Blueprint mesh import (future alternate input — not required for initial release):
+As a future alternate to the drawing editor, a Blender mesh (planes joined at their edges, representing a floor plan)
+could also serve as a blueprint:
+    - Use a shape-detection algorithm to find the perimeter of the shape.
+    - Extract the individual edge definitions from the shape.
+    - Feed those edges into the existing placement logic.
+Because the design is already edge-based, this would simply be a third "edge producer" alongside the drawing editor
+and Random Grid mode, with zero changes to placement.
 
-It would likely be best to start the addon to be "edge based" in that the building logic works on a per-edge basis.
-This way we could also later on add expansions like per edge wall regeneration, per edge pillar regeneration, per edge door regeneration, etc.
-To do this properly we wouold have to hold a local data structure even after the initial build is complete (internally for now for the addon to track the edges/walls/pillars/doors and their states and to be able to link idividual objects to their specific shell or edge group).
+## Per-edge regeneration (future expansion):
+With the edge data structure retained after build, later expansions can add per-edge wall regeneration, per-edge pillar
+regeneration, per-edge door regeneration, etc., scoped to a single edge without rebuilding the whole shell.
 
 # Future Expansion:
 Ignore during initial build/release version.
