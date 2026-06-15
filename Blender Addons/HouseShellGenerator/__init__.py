@@ -23,12 +23,13 @@ from bpy.props import (
 )
 from bpy.types import Operator, Panel, PropertyGroup
 
-from . import core, blueprint
+from . import core, blueprint, part_swap
 
 # Support Blender's "Reload Scripts" during development.
 if "_already_loaded" in locals():
     importlib.reload(core)
     importlib.reload(blueprint)
+    importlib.reload(part_swap)
 _already_loaded = True
 
 
@@ -79,6 +80,12 @@ class HSG_Settings(PropertyGroup):
 
     wall_collections: CollectionProperty(type=HSG_CollectionItem)
     pillar_collections: CollectionProperty(type=HSG_CollectionItem)
+
+    swap_target: PointerProperty(
+        name="Swap Target",
+        type=bpy.types.Object,
+        description="Placed shell part to replace",
+    )
 
 
 # --- collection scanning -----------------------------------------------------
@@ -339,11 +346,15 @@ def register():
         bpy.utils.register_class(cls)
     for cls in blueprint.classes:
         bpy.utils.register_class(cls)
+    for cls in part_swap.classes:
+        bpy.utils.register_class(cls)
     bpy.types.Scene.hsg_settings = PointerProperty(type=HSG_Settings)
 
 
 def unregister():
     del bpy.types.Scene.hsg_settings
+    for cls in reversed(part_swap.classes):
+        bpy.utils.unregister_class(cls)
     for cls in reversed(blueprint.classes):
         bpy.utils.unregister_class(cls)
     for cls in reversed(classes):

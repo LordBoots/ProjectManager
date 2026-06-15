@@ -365,6 +365,50 @@ def _instance(source, name, location, rot_z, collection):
     return new
 
 
+def replace_placed_part(target, source):
+    """Delete a placed part and instance the source at the same world transform.
+
+    Returns (new_object, error_message). error_message is None on success.
+    """
+    if target.type != 'MESH':
+        return None, "Target must be a mesh object."
+    if source.type != 'MESH':
+        return None, "Source must be a mesh object."
+    if target == source:
+        return None, "Target and source must be different objects."
+
+    parent = target.parent
+    matrix = target.matrix_world.copy()
+    name = target.name
+    collections = list(target.users_collection)
+
+    bpy.data.objects.remove(target, do_unlink=True)
+
+    new = source.copy()
+    new.name = name
+    for coll in collections:
+        if new.name not in coll.objects:
+            coll.objects.link(new)
+    if parent:
+        new.parent = parent
+    new.matrix_world = matrix
+    return new, None
+
+
+def describe_part(obj):
+    """Human-readable summary from a wall/door/pillar object name, or None."""
+    if obj is None:
+        return None
+    info = parse_wall_object(obj.name)
+    if info:
+        return "%s / %s / %s m / %s" % (
+            info["height"], info["style"], info["width"], info["category"])
+    info = parse_pillar_object(obj.name)
+    if info:
+        return "%s / %s" % (info["height"], info["type_name"])
+    return None
+
+
 def _parent_keep_transform(child, parent):
     child.parent = parent
     child.matrix_parent_inverse = parent.matrix_world.inverted()
