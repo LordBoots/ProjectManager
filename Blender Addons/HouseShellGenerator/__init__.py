@@ -270,12 +270,18 @@ class HSG_PT_panel(Panel):
         if s.generation_mode == 'BLUEPRINT':
             box = layout.box()
             box.label(text="Blueprint", icon='GREASEPENCIL')
-            box.operator("hsg.draw_blueprint", icon='PLAY')
+            if blueprint.blueprint_editor_active():
+                box.label(text="Editor open in split pane", icon='CHECKMARK')
+                box.operator("hsg.close_blueprint_view", icon='PANEL_CLOSE')
+            else:
+                box.operator("hsg.open_blueprint_view", icon='ADD')
             row = box.row()
             row.operator("hsg.clear_blueprint", icon='TRASH')
             loops = blueprint.get_blueprint_loops()
             box.label(text="Closed loops: %d   Points: %d"
                       % (len(loops), len(blueprint.blueprint_data["points"])))
+            box.label(text="Generate anytime — no need to close editor",
+                      icon='INFO')
         else:
             box = layout.box()
             box.label(text="Dimensions (m)", icon='FIXED_SIZE')
@@ -352,6 +358,7 @@ def register():
 
 
 def unregister():
+    blueprint.close_blueprint_view()
     del bpy.types.Scene.hsg_settings
     for cls in reversed(part_swap.classes):
         bpy.utils.unregister_class(cls)

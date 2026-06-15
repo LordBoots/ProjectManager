@@ -1,17 +1,9 @@
 """House Shell Generator - Blueprint mode (core feature).
 
-A modal viewport editor (modeled on the working Floor Plan editor) that lets the
-user draw a grid-snapped floor plan. The grid cell is fixed at 1.25m (half-wall
-width) so every point and edge lands on a valid wall boundary.
-
-Edges are colour-coded so the user sees how each wall run subdivides BEFORE
-generating:
-  - full 2.5m increments -> FULL_COLOR
-  - the leftover 1.25m half-wall increment (odd spans) -> HALF_COLOR
-  - diagonal / off-axis edges -> INVALID_COLOR
-
-On finish the drawn graph is converted into one or more closed rectilinear
-loops; each loop becomes a shell footprint fed to the same placement pipeline.
+Persistent split-pane editor: a dedicated 3D viewport shows only the GPU grid
+overlay (scene objects hidden per-viewport), locked top ortho, with input scoped
+to that pane so the work viewport and N-panel stay fully usable. Generate Shells
+reads blueprint_data at any time — no enter/exit mode step.
 """
 
 import math
@@ -31,6 +23,8 @@ blueprint_data = {
     "selected_point": None,  # index into points, or None
 }
 
+BLUEPRINT_VIEW_LAYER = "HSG_Blueprint"
+
 GRID = core.GRID                      # 1.25m
 GRID_RANGE = 24                       # how many cells to draw each way
 POINT_RADIUS = 0.18
@@ -43,6 +37,24 @@ HALF_COLOR = (1.00, 0.55, 0.10, 1.0)   # leftover 1.25m half-wall segment
 INVALID_COLOR = (1.00, 0.15, 0.15, 1.0)  # diagonal / off-grid edges
 POINT_COLOR = (0.0, 1.0, 0.5, 1.0)
 SELECTED_COLOR = (1.0, 0.0, 0.0, 1.0)
+
+_OBJECT_TYPE_FLAGS = (
+    "show_object_viewport_mesh",
+    "show_object_viewport_curve",
+    "show_object_viewport_surf",
+    "show_object_viewport_meta",
+    "show_object_viewport_font",
+    "show_object_viewport_hair",
+    "show_object_viewport_pointcloud",
+    "show_object_viewport_volume",
+    "show_object_viewport_gpencil",
+    "show_object_viewport_armature",
+    "show_object_viewport_lattice",
+    "show_object_viewport_empty",
+    "show_object_viewport_light",
+    "show_object_viewport_camera",
+    "show_object_viewport_speaker",
+)
 
 
 # --- public API used by the generate operator --------------------------------
@@ -58,26 +70,18 @@ def has_blueprint():
 
 
 def get_blueprint_loops():
-    """Return a list of CCW vertex loops extracted from the drawn graph.
-
-    Uses a planar face-finding traversal so internal/shared walls (degree-3+
-    junctions) are handled: every enclosed cell becomes its own loop. Collinear
-    vertices are merged so each loop edge is one wall side.
-    """
+    """Return a list of CCW vertex loops extracted from the drawn graph."""
     points = [(p[0], p[1]) for p in blueprint_data["points"]]
     edges = blueprint_data["edges"]
     return _extract_loops(points, edges)
 
 
-def _extract_loops(points, edges):
-    """Find every minimal enclosed face of the (planar) drawn graph.
+def blueprint_editor_active():
+    session = _get_session()
+    return session is not None and session.is_active()
 
-    Method: build directed half-edges and, at each vertex, sort neighbors by
-    angle. Walking a half-edge u->v, the next face edge is the neighbor of v
-    immediately clockwise from the reverse direction (v->u). This carves out
-    each interior face (CCW / positive signed area). Each connected component's
-    single outer boundary comes out clockwise (negative) and is discarded.
-    """
+
+def _extract_loops(points, edges):
     if not edges:
         return []
 
@@ -100,8 +104,6 @@ def _extract_loops(points, edges):
         adj[u].sort(key=lambda v, u=u: angle(u, v))
 
     def next_half_edge(u, v):
-        # at v, find where we came from (u) and step to the previous neighbor
-        # in CCW order -> the most clockwise turn -> traces interior faces CW.
         nbrs = adj[v]
         i = nbrs.index(u)
         return v, nbrs[(i - 1) % len(nbrs)]
@@ -130,7 +132,7 @@ def _extract_loops(points, edges):
                 continue
             verts = [points[i] for i in face]
             if core.signed_area(verts) <= 1e-9:
-                continue  # outer boundary (CW) / degenerate -> skip
+                continue
             merged = _merge_collinear(verts)
             if len(merged) >= 3:
                 loops.append(core.ensure_ccw(merged))
@@ -138,7 +140,6 @@ def _extract_loops(points, edges):
 
 
 def _merge_collinear(verts):
-    """Merge consecutive collinear vertices in a closed loop."""
     n = len(verts)
     out = []
     for i in range(n):
@@ -148,40 +149,477 @@ def _merge_collinear(verts):
         d1 = (cur[0] - prev[0], cur[1] - prev[1])
         d2 = (nxt[0] - cur[0], nxt[1] - cur[1])
         cross = d1[0] * d2[1] - d1[1] * d2[0]
-        if abs(cross) > 1e-6:  # direction changes here -> keep corner
+        if abs(cross) > 1e-6:
             out.append(cur)
     return out
 
 
-# --- modal operator ----------------------------------------------------------
+# --- view layer (optional separate-window workflow) --------------------------
 
-class HSG_OT_draw_blueprint(bpy.types.Operator):
-    """Draw a grid-snapped floor plan for Blueprint mode"""
-    bl_idname = "hsg.draw_blueprint"
-    bl_label = "Draw Blueprint"
+def ensure_blueprint_view_layer(scene):
+    """View layer with every collection excluded — for a dedicated window."""
+    if BLUEPRINT_VIEW_LAYER in scene.view_layers:
+        return scene.view_layers[BLUEPRINT_VIEW_LAYER]
+    view_layer = scene.view_layers.new(BLUEPRINT_VIEW_LAYER)
+    _exclude_layer_collection_tree(view_layer.layer_collection)
+    return view_layer
+
+
+def _exclude_layer_collection_tree(layer_collection):
+    layer_collection.exclude = True
+    for child in layer_collection.children:
+        _exclude_layer_collection_tree(child)
+
+
+# --- blueprint pane setup ----------------------------------------------------
+
+def _window_region(area):
+    for region in area.regions:
+        if region.type == 'WINDOW':
+            return region
+    return None
+
+
+def _configure_blueprint_viewport(context, area):
+    """Top ortho, no scene clutter — only our GPU overlay remains visible."""
+    space = area.spaces.active
+    if space.type != 'VIEW_3D':
+        return
+
+    region = _window_region(area)
+    if region is not None:
+        override = context.copy()
+        override["window"] = context.window
+        override["screen"] = context.screen
+        override["area"] = area
+        override["region"] = region
+        override["space_data"] = space
+        with context.temp_override(**override):
+            bpy.ops.view3d.view_axis(type='TOP')
+
+    rv3d = space.region_3d
+    if rv3d is not None:
+        rv3d.view_perspective = 'ORTHO'
+        rv3d.view_distance = GRID_RANGE * GRID * 1.15
+        if hasattr(rv3d, "lock_rotation"):
+            rv3d.lock_rotation = True
+
+    if hasattr(space, "show_gizmo"):
+        space.show_gizmo = False
+
+    overlay = space.overlay
+    overlay.show_floor = False
+    overlay.show_ortho_grid = False
+    overlay.show_axis_x = False
+    overlay.show_axis_y = False
+    overlay.show_axis_z = False
+    overlay.show_outline_selected = False
+    overlay.show_extras = False
+    overlay.show_relationship_lines = False
+
+    for flag in _OBJECT_TYPE_FLAGS:
+        if hasattr(space, flag):
+            setattr(space, flag, False)
+
+
+# --- drawing (GPU) -----------------------------------------------------------
+
+def _draw_grid(shader):
+    coords = []
+    extent = GRID_RANGE * GRID
+    for i in range(-GRID_RANGE, GRID_RANGE + 1):
+        coords.append((i * GRID, -extent, 0.0))
+        coords.append((i * GRID, extent, 0.0))
+        coords.append((-extent, i * GRID, 0.0))
+        coords.append((extent, i * GRID, 0.0))
+    batch = batch_for_shader(shader, 'LINES', {"pos": coords})
+    shader.bind()
+    shader.uniform_float("color", GRID_COLOR)
+    batch.draw(shader)
+    axis = [(-extent, 0, 0), (extent, 0, 0), (0, -extent, 0), (0, extent, 0)]
+    batch = batch_for_shader(shader, 'LINES', {"pos": axis})
+    shader.bind()
+    shader.uniform_float("color", AXIS_COLOR)
+    batch.draw(shader)
+
+
+def _draw_edges(shader):
+    full_seg = []
+    half_seg = []
+    invalid_seg = []
+    pts = blueprint_data["points"]
+    for a, b in blueprint_data["edges"]:
+        if a >= len(pts) or b >= len(pts):
+            continue
+        p1 = pts[a]
+        p2 = pts[b]
+        dx = p2[0] - p1[0]
+        dy = p2[1] - p1[1]
+        if abs(dx) > 1e-6 and abs(dy) > 1e-6:
+            invalid_seg.extend([(p1[0], p1[1], 0.0), (p2[0], p2[1], 0.0)])
+            continue
+        length = math.hypot(dx, dy)
+        units = int(round(length / GRID))
+        if units <= 0:
+            continue
+        ux = dx / units if units else 0.0
+        uy = dy / units if units else 0.0
+        has_half = units % 2 == 1
+        for k in range(units):
+            s = (p1[0] + ux * k, p1[1] + uy * k, 0.0)
+            e = (p1[0] + ux * (k + 1), p1[1] + uy * (k + 1), 0.0)
+            if has_half and k == units - 1:
+                half_seg.extend([s, e])
+            else:
+                full_seg.extend([s, e])
+
+    for seg, color in ((full_seg, FULL_COLOR),
+                       (half_seg, HALF_COLOR),
+                       (invalid_seg, INVALID_COLOR)):
+        if not seg:
+            continue
+        gpu.state.line_width_set(3.0)
+        batch = batch_for_shader(shader, 'LINES', {"pos": seg})
+        shader.bind()
+        shader.uniform_float("color", color)
+        batch.draw(shader)
+    gpu.state.line_width_set(1.0)
+
+
+def _circle(cx, cy, radius, segments=16):
+    return [(cx + radius * math.cos(2 * math.pi * i / segments),
+             cy + radius * math.sin(2 * math.pi * i / segments), 0.0)
+            for i in range(segments)]
+
+
+def _draw_points(shader):
+    for i, p in enumerate(blueprint_data["points"]):
+        selected = (i == blueprint_data["selected_point"])
+        color = SELECTED_COLOR if selected else POINT_COLOR
+        radius = POINT_RADIUS * (1.5 if selected else 1.0)
+        coords = _circle(p[0], p[1], radius)
+        mode = 'TRI_FAN' if selected else 'LINE_LOOP'
+        batch = batch_for_shader(shader, mode, {"pos": coords})
+        shader.bind()
+        shader.uniform_float("color", color)
+        batch.draw(shader)
+
+
+def _draw_hud(region):
+    width = region.width if region else 1920
+    height = region.height if region else 1080
+
+    panel_w = min(760, max(320, width - 32))
+    panel_h = 96
+    x0 = 16
+    y_top = height - 16
+
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    bg = [(x0, y_top), (x0 + panel_w, y_top),
+          (x0 + panel_w, y_top - panel_h), (x0, y_top - panel_h)]
+    batch = batch_for_shader(shader, 'TRI_FAN', {"pos": bg})
+    shader.bind()
+    shader.uniform_float("color", (0.08, 0.08, 0.08, 0.82))
+    batch.draw(shader)
+    gpu.state.blend_set('NONE')
+
+    font_id = 0
+    loops = get_blueprint_loops()
+    tx = x0 + 14
+    blf.color(font_id, 1, 1, 1, 1)
+    blf.size(font_id, 18)
+    blf.position(font_id, tx, y_top - 26, 0)
+    blf.draw(font_id, "Blueprint  |  Points: %d   Edges: %d   Loops: %d   Grid: %.2fm"
+             % (len(blueprint_data["points"]), len(blueprint_data["edges"]),
+                len(loops), GRID))
+    blf.size(font_id, 13)
+    blf.position(font_id, tx, y_top - 50, 0)
+    blf.draw(font_id, "Blue = 2.5m   Orange = 1.25m   Red = invalid")
+    blf.position(font_id, tx, y_top - 72, 0)
+    blf.draw(font_id, "LMB: place/connect   RMB: delete   X: deselect   C: clear")
+
+
+# --- input helpers -----------------------------------------------------------
+
+def _mouse_to_grid(area, event):
+    region = _window_region(area)
+    space = area.spaces.active
+    if region is None or space.type != 'VIEW_3D':
+        return None
+    rv3d = space.region_3d
+    if rv3d is None:
+        return None
+    coord = (event.mouse_x - region.x, event.mouse_y - region.y)
+    view_vec = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
+    origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+    if abs(view_vec.z) < 1e-9:
+        return None
+    t = -origin.z / view_vec.z
+    world = origin + view_vec * t
+    x = round(world.x / GRID) * GRID
+    y = round(world.y / GRID) * GRID
+    return (x, y)
+
+
+def _point_index_at(pos):
+    for i, p in enumerate(blueprint_data["points"]):
+        if math.hypot(pos[0] - p[0], pos[1] - p[1]) < PICK_THRESHOLD:
+            return i
+    return None
+
+
+def _handle_click(area, event):
+    pos = _mouse_to_grid(area, event)
+    if pos is None:
+        return
+    idx = _point_index_at(pos)
+    sel = blueprint_data["selected_point"]
+    if idx is not None:
+        if sel is None:
+            blueprint_data["selected_point"] = idx
+        elif sel == idx:
+            blueprint_data["selected_point"] = None
+        else:
+            edge = (sel, idx) if sel < idx else (idx, sel)
+            if edge not in blueprint_data["edges"]:
+                blueprint_data["edges"].append(edge)
+            blueprint_data["selected_point"] = idx
+    else:
+        blueprint_data["points"].append([pos[0], pos[1], 0.0])
+        new_idx = len(blueprint_data["points"]) - 1
+        if sel is not None:
+            edge = (sel, new_idx) if sel < new_idx else (new_idx, sel)
+            if edge not in blueprint_data["edges"]:
+                blueprint_data["edges"].append(edge)
+        blueprint_data["selected_point"] = new_idx
+
+
+def _delete_at_mouse(area, event):
+    pos = _mouse_to_grid(area, event)
+    if pos is None:
+        return
+    idx = _point_index_at(pos)
+    if idx is None:
+        return
+    blueprint_data["points"].pop(idx)
+    kept = []
+    for a, b in blueprint_data["edges"]:
+        if a == idx or b == idx:
+            continue
+        a = a - 1 if a > idx else a
+        b = b - 1 if b > idx else b
+        kept.append((a, b) if a < b else (b, a))
+    blueprint_data["edges"] = kept
+    sel = blueprint_data["selected_point"]
+    if sel == idx:
+        blueprint_data["selected_point"] = None
+    elif sel is not None and sel > idx:
+        blueprint_data["selected_point"] = sel - 1
+
+
+# --- persistent split-pane session -------------------------------------------
+
+_session = None
+
+
+def _get_session():
+    return _session
+
+
+class BlueprintViewSession:
+    def __init__(self, area):
+        self.area_ptr = area.as_pointer()
+        self.draw_handle_3d = None
+        self.draw_handle_ui = None
+        self.stop_requested = False
+
+    def get_area(self):
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.as_pointer() == self.area_ptr:
+                    return area
+        return None
+
+    def is_active(self):
+        area = self.get_area()
+        return area is not None and area.type == 'VIEW_3D'
+
+    def mouse_in_window_region(self, event):
+        area = self.get_area()
+        if area is None:
+            return False
+        region = _window_region(area)
+        if region is None:
+            return False
+        return (region.x <= event.mouse_x < region.x + region.width and
+                region.y <= event.mouse_y < region.y + region.height)
+
+    def draw_callback_3d(self, context):
+        session = _get_session()
+        if session is None or context.area is None:
+            return
+        if context.area.as_pointer() != session.area_ptr:
+            return
+        try:
+            shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+            gpu.state.blend_set('ALPHA')
+            _draw_grid(shader)
+            _draw_edges(shader)
+            _draw_points(shader)
+            gpu.state.blend_set('NONE')
+        except Exception as exc:
+            print("Blueprint 3D draw error:", exc)
+
+    def draw_callback_ui(self, context):
+        session = _get_session()
+        if session is None or context.area is None:
+            return
+        if context.area.as_pointer() != session.area_ptr:
+            return
+        if context.region is None or context.region.type != 'WINDOW':
+            return
+        try:
+            _draw_hud(context.region)
+        except Exception as exc:
+            print("Blueprint UI draw error:", exc)
+
+    def register_handlers(self):
+        self.draw_handle_3d = bpy.types.SpaceView3D.draw_handler_add(
+            self.draw_callback_3d, (bpy.context,), 'WINDOW', 'POST_VIEW')
+        self.draw_handle_ui = bpy.types.SpaceView3D.draw_handler_add(
+            self.draw_callback_ui, (bpy.context,), 'WINDOW', 'POST_PIXEL')
+
+    def unregister_handlers(self):
+        if self.draw_handle_3d is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self.draw_handle_3d, 'WINDOW')
+            self.draw_handle_3d = None
+        if self.draw_handle_ui is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self.draw_handle_ui, 'WINDOW')
+            self.draw_handle_ui = None
+        area = self.get_area()
+        if area is not None:
+            area.tag_redraw()
+
+    def close(self):
+        self.stop_requested = True
+        self.unregister_handlers()
+
+
+def open_blueprint_view(context):
+    global _session
+    if _session is not None and _session.is_active():
+        return None, "Blueprint editor is already open."
+
+    if context.area is None or context.area.type != 'VIEW_3D':
+        return None, "Open the blueprint editor from a 3D Viewport."
+
+    ensure_blueprint_view_layer(context.scene)
+
+    screen = context.screen
+    original_ptr = context.area.as_pointer()
+    before = {area.as_pointer() for area in screen.areas}
+
+    override = context.copy()
+    override["window"] = context.window
+    override["screen"] = screen
+    override["area"] = context.area
+    override["region"] = context.region
+    with context.temp_override(**override):
+        bpy.ops.screen.area_split(direction='VERTICAL', factor=0.55)
+
+    blueprint_area = None
+    for area in screen.areas:
+        if area.type == 'VIEW_3D' and area.as_pointer() not in before:
+            blueprint_area = area
+            break
+    if blueprint_area is None:
+        return None, "Could not create blueprint viewport."
+
+    _configure_blueprint_viewport(context, blueprint_area)
+
+    _session = BlueprintViewSession(blueprint_area)
+    _session.register_handlers()
+    blueprint_area.tag_redraw()
+
+    bpy.ops.hsg.blueprint_input('INVOKE_DEFAULT')
+    return blueprint_area, None
+
+
+def close_blueprint_view():
+    global _session
+    if _session is None:
+        return False
+    _session.close()
+    _session = None
+    return True
+
+
+# --- operators ---------------------------------------------------------------
+
+class HSG_OT_open_blueprint_view(bpy.types.Operator):
+    """Open a split blueprint editor pane (top ortho, grid overlay only)"""
+    bl_idname = "hsg.open_blueprint_view"
+    bl_label = "Open Blueprint View"
     bl_options = {'REGISTER'}
 
-    _draw_handle_3d = None
-    _draw_handle_ui = None
+    def execute(self, context):
+        _, err = open_blueprint_view(context)
+        if err:
+            self.report({'ERROR'}, err)
+            return {'CANCELLED'}
+        self.report({'INFO'}, "Blueprint editor open — draw anytime, generate without closing.")
+        return {'FINISHED'}
+
+
+class HSG_OT_close_blueprint_view(bpy.types.Operator):
+    """Close the split blueprint editor pane"""
+    bl_idname = "hsg.close_blueprint_view"
+    bl_label = "Close Blueprint View"
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        return blueprint_editor_active()
+
+    def execute(self, context):
+        if close_blueprint_view():
+            self.report({'INFO'}, "Blueprint editor closed. Drawing data kept.")
+            return {'FINISHED'}
+        self.report({'WARNING'}, "Blueprint editor is not open.")
+        return {'CANCELLED'}
+
+
+class HSG_OT_blueprint_input(bpy.types.Operator):
+    """Region-scoped blueprint input (internal — started by open view)"""
+    bl_idname = "hsg.blueprint_input"
+    bl_label = "Blueprint Input"
+    bl_options = {'REGISTER'}
 
     def modal(self, context, event):
-        if context.area:
-            context.area.tag_redraw()
+        session = _get_session()
+        if session is None or session.stop_requested:
+            return {'CANCELLED'}
 
-        if event.type in {'ESC', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
-            self.finish(context)
-            return {'FINISHED'}
+        area = session.get_area()
+        if area is None:
+            close_blueprint_view()
+            return {'CANCELLED'}
 
-        # Let the user navigate the viewport.
+        area.tag_redraw()
+
+        if not session.mouse_in_window_region(event):
+            return {'PASS_THROUGH'}
+
         if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             return {'PASS_THROUGH'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
-            self.handle_click(context, event)
+            _handle_click(area, event)
             return {'RUNNING_MODAL'}
 
         if event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
-            self.delete_at_mouse(context, event)
+            _delete_at_mouse(area, event)
             return {'RUNNING_MODAL'}
 
         if event.type == 'C' and event.value == 'PRESS':
@@ -194,232 +632,9 @@ class HSG_OT_draw_blueprint(bpy.types.Operator):
 
         return {'PASS_THROUGH'}
 
-    # -- input -> world position ---------------------------------------------
-    def mouse_to_grid(self, context, event):
-        region = context.region
-        rv3d = context.region_data
-        if region is None or rv3d is None:
-            return None
-        coord = (event.mouse_region_x, event.mouse_region_y)
-        view_vec = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-        origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
-        if abs(view_vec.z) < 1e-9:
-            return None
-        t = -origin.z / view_vec.z
-        world = origin + view_vec * t
-        x = round(world.x / GRID) * GRID
-        y = round(world.y / GRID) * GRID
-        return (x, y)
-
-    def point_index_at(self, pos):
-        for i, p in enumerate(blueprint_data["points"]):
-            if math.hypot(pos[0] - p[0], pos[1] - p[1]) < PICK_THRESHOLD:
-                return i
-        return None
-
-    def handle_click(self, context, event):
-        pos = self.mouse_to_grid(context, event)
-        if pos is None:
-            return
-        idx = self.point_index_at(pos)
-        sel = blueprint_data["selected_point"]
-        if idx is not None:
-            if sel is None:
-                blueprint_data["selected_point"] = idx
-            elif sel == idx:
-                blueprint_data["selected_point"] = None
-            else:
-                edge = (sel, idx) if sel < idx else (idx, sel)
-                if edge not in blueprint_data["edges"]:
-                    blueprint_data["edges"].append(edge)
-                blueprint_data["selected_point"] = idx  # chain drawing
-        else:
-            blueprint_data["points"].append([pos[0], pos[1], 0.0])
-            new_idx = len(blueprint_data["points"]) - 1
-            if sel is not None:
-                edge = (sel, new_idx) if sel < new_idx else (new_idx, sel)
-                if edge not in blueprint_data["edges"]:
-                    blueprint_data["edges"].append(edge)
-            blueprint_data["selected_point"] = new_idx  # chain drawing
-
-    def delete_at_mouse(self, context, event):
-        pos = self.mouse_to_grid(context, event)
-        if pos is None:
-            return
-        idx = self.point_index_at(pos)
-        if idx is None:
-            return
-        blueprint_data["points"].pop(idx)
-        kept = []
-        for a, b in blueprint_data["edges"]:
-            if a == idx or b == idx:
-                continue
-            a = a - 1 if a > idx else a
-            b = b - 1 if b > idx else b
-            kept.append((a, b) if a < b else (b, a))
-        blueprint_data["edges"] = kept
-        sel = blueprint_data["selected_point"]
-        if sel == idx:
-            blueprint_data["selected_point"] = None
-        elif sel is not None and sel > idx:
-            blueprint_data["selected_point"] = sel - 1
-
-    # -- drawing --------------------------------------------------------------
-    def draw_callback_3d(self, context):
-        try:
-            shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-            gpu.state.blend_set('ALPHA')
-            self.draw_grid(shader)
-            self.draw_edges(shader)
-            self.draw_points(shader)
-            gpu.state.blend_set('NONE')
-        except Exception as exc:  # never let a draw error kill the modal
-            print("Blueprint 3D draw error:", exc)
-
-    def draw_grid(self, shader):
-        coords = []
-        extent = GRID_RANGE * GRID
-        for i in range(-GRID_RANGE, GRID_RANGE + 1):
-            coords.append((i * GRID, -extent, 0.0))
-            coords.append((i * GRID, extent, 0.0))
-            coords.append((-extent, i * GRID, 0.0))
-            coords.append((extent, i * GRID, 0.0))
-        batch = batch_for_shader(shader, 'LINES', {"pos": coords})
-        shader.bind()
-        shader.uniform_float("color", GRID_COLOR)
-        batch.draw(shader)
-        # axes
-        axis = [(-extent, 0, 0), (extent, 0, 0), (0, -extent, 0), (0, extent, 0)]
-        batch = batch_for_shader(shader, 'LINES', {"pos": axis})
-        shader.bind()
-        shader.uniform_float("color", AXIS_COLOR)
-        batch.draw(shader)
-
-    def draw_edges(self, shader):
-        full_seg = []
-        half_seg = []
-        invalid_seg = []
-        pts = blueprint_data["points"]
-        for a, b in blueprint_data["edges"]:
-            if a >= len(pts) or b >= len(pts):
-                continue
-            p1 = pts[a]
-            p2 = pts[b]
-            dx = p2[0] - p1[0]
-            dy = p2[1] - p1[1]
-            if abs(dx) > 1e-6 and abs(dy) > 1e-6:
-                invalid_seg.extend([(p1[0], p1[1], 0.0), (p2[0], p2[1], 0.0)])
-                continue
-            length = math.hypot(dx, dy)
-            units = int(round(length / GRID))
-            if units <= 0:
-                continue
-            ux = dx / units if units else 0.0
-            uy = dy / units if units else 0.0
-            has_half = units % 2 == 1
-            for k in range(units):
-                s = (p1[0] + ux * k, p1[1] + uy * k, 0.0)
-                e = (p1[0] + ux * (k + 1), p1[1] + uy * (k + 1), 0.0)
-                if has_half and k == units - 1:
-                    half_seg.extend([s, e])
-                else:
-                    full_seg.extend([s, e])
-
-        for seg, color in ((full_seg, FULL_COLOR),
-                           (half_seg, HALF_COLOR),
-                           (invalid_seg, INVALID_COLOR)):
-            if not seg:
-                continue
-            gpu.state.line_width_set(3.0)
-            batch = batch_for_shader(shader, 'LINES', {"pos": seg})
-            shader.bind()
-            shader.uniform_float("color", color)
-            batch.draw(shader)
-        gpu.state.line_width_set(1.0)
-
-    def draw_points(self, shader):
-        for i, p in enumerate(blueprint_data["points"]):
-            selected = (i == blueprint_data["selected_point"])
-            color = SELECTED_COLOR if selected else POINT_COLOR
-            radius = POINT_RADIUS * (1.5 if selected else 1.0)
-            coords = self._circle(p[0], p[1], radius)
-            mode = 'TRI_FAN' if selected else 'LINE_LOOP'
-            batch = batch_for_shader(shader, mode, {"pos": coords})
-            shader.bind()
-            shader.uniform_float("color", color)
-            batch.draw(shader)
-
-    @staticmethod
-    def _circle(cx, cy, radius, segments=16):
-        return [(cx + radius * math.cos(2 * math.pi * i / segments),
-                 cy + radius * math.sin(2 * math.pi * i / segments), 0.0)
-                for i in range(segments)]
-
-    def draw_callback_ui(self, context):
-        try:
-            self._draw_hud(context)
-        except Exception as exc:
-            print("Blueprint UI draw error:", exc)
-
-    def _draw_hud(self, context):
-        region = context.region
-        width = region.width if region else 1920
-        height = region.height if region else 1080
-
-        panel_w = 760
-        panel_h = 96
-        x0 = 16
-        y_top = height - 16
-
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        gpu.state.blend_set('ALPHA')
-        bg = [(x0, y_top), (x0 + panel_w, y_top),
-              (x0 + panel_w, y_top - panel_h), (x0, y_top - panel_h)]
-        batch = batch_for_shader(shader, 'TRI_FAN', {"pos": bg})
-        shader.bind()
-        shader.uniform_float("color", (0.08, 0.08, 0.08, 0.82))
-        batch.draw(shader)
-        gpu.state.blend_set('NONE')
-
-        font_id = 0
-        loops = get_blueprint_loops()
-        tx = x0 + 14
-        blf.color(font_id, 1, 1, 1, 1)
-        blf.size(font_id, 18)
-        blf.position(font_id, tx, y_top - 26, 0)
-        blf.draw(font_id, "Blueprint  |  Points: %d   Edges: %d   Closed loops: %d   Grid: %.2fm"
-                 % (len(blueprint_data["points"]), len(blueprint_data["edges"]),
-                    len(loops), GRID))
-        blf.size(font_id, 13)
-        blf.position(font_id, tx, y_top - 50, 0)
-        blf.draw(font_id, "Blue = full 2.5m   Orange = half 1.25m   Red = invalid (diagonal)")
-        blf.position(font_id, tx, y_top - 72, 0)
-        blf.draw(font_id, "LMB: place / connect   RMB: delete   X: deselect   C: clear   ESC/Enter: finish")
-
-    # -- lifecycle ------------------------------------------------------------
     def invoke(self, context, event):
-        if context.area is None or context.area.type != 'VIEW_3D':
-            self.report({'WARNING'}, "Blueprint editor must be started in a 3D Viewport.")
-            return {'CANCELLED'}
-        self._draw_handle_3d = bpy.types.SpaceView3D.draw_handler_add(
-            self.draw_callback_3d, (context,), 'WINDOW', 'POST_VIEW')
-        self._draw_handle_ui = bpy.types.SpaceView3D.draw_handler_add(
-            self.draw_callback_ui, (context,), 'WINDOW', 'POST_PIXEL')
         context.window_manager.modal_handler_add(self)
-        context.area.tag_redraw()
         return {'RUNNING_MODAL'}
-
-    def finish(self, context):
-        if self._draw_handle_3d is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handle_3d, 'WINDOW')
-            self._draw_handle_3d = None
-        if self._draw_handle_ui is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handle_ui, 'WINDOW')
-            self._draw_handle_ui = None
-        if context.area:
-            context.area.tag_redraw()
-        loops = get_blueprint_loops()
-        self.report({'INFO'}, "Blueprint captured: %d closed loop(s)." % len(loops))
 
 
 class HSG_OT_clear_blueprint(bpy.types.Operator):
@@ -435,6 +650,8 @@ class HSG_OT_clear_blueprint(bpy.types.Operator):
 
 
 classes = (
-    HSG_OT_draw_blueprint,
+    HSG_OT_open_blueprint_view,
+    HSG_OT_close_blueprint_view,
+    HSG_OT_blueprint_input,
     HSG_OT_clear_blueprint,
 )
