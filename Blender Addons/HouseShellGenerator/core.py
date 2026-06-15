@@ -1,564 +1,488 @@
-"""House Shell Generator - pure generation logic (no bpy).
+"""House Shell Generator - core logic.
 
-This module holds everything that does NOT need Blender: the edge-based data
-model, name parsing, width subdivision, geometry/placement math, the model
-index, and the per-shell planning step. Keeping it bpy-free makes the math
-testable on its own. The Blender glue lives in __init__.py.
+Pure generation logic plus the placement layer:
+  - data model (Slot / Edge / Shell)
+  - name parsing for wall/pillar objects and collections
+  - model index (grouped by height pool / style / width / category)
+  - width subdivision (2.5m + 1.25m slots)
+  - geometry helpers (winding, outward normal -> rotation)
+  - shell realization (instancing walls/pillars, parenting) and door post-processing
+
+Random Grid mode and Blueprint mode both produce a CCW list of footprint
+vertices and feed the SAME realization pipeline (realize_shell).
 """
-
-from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+import bpy
+from mathutils import Vector
 
-WALL_FULL = 2.5
-WALL_HALF = 1.25
-STEP = 1.25
-MIN_DIMENSION = 5.0  # two full walls
-MAX_WINDOW_RATIO = 0.8
-MAX_DOORS_PER_SHELL = 2
-MAX_DOORS_PER_EDGE = 1
+# --- constants ---------------------------------------------------------------
 
-HEIGHTS = ("Tall", "Short")
-DIRECTIONS = ("X+", "X-", "Y+", "Y-")
+FULL_WIDTH = 2.5
+HALF_WIDTH = 1.25
+GRID = 1.25            # blueprint grid cell / snap increment (half-wall width)
+MIN_SIDE = 2.5        # a wall side must be at least two... actually >= 1 full wall
 
-# Outward-facing Z rotation per edge direction, for a CCW perimeter.
-# (Authored model "front" ends up facing away from the shell interior.)
-DIRECTION_ROTATION = {
-    "X+": 0.0,
-    "Y+": math.pi / 2,
-    "X-": math.pi,
-    "Y-": -math.pi / 2,
-}
+GENERATED_COLLECTION = "Generated_Shells"
 
-TALL_STYLES = ("BrickWoodBottom", "Brick", "Wood", "Stucco")
-SHORT_STYLES = (
-    "BrickWoodBottom",
-    "Brick",
-    "BrickFancy",
-    "BrickBrickBottom",
-    "Wood",
-    "WoodFancy",
-    "WoodBrickBottom",
-    "Stucco",
-)
-
-# ---------------------------------------------------------------------------
-# Name parsing  (collections plural, objects singular)
-# ---------------------------------------------------------------------------
-
-# Collections (pools)
-_WALL_POOL_RE = re.compile(r"^\[Walls_(Tall|Short)_([A-Za-z]+)\]$")
-_PILLAR_POOL_RE = re.compile(r"^\[Pillars_(Tall|Short)\]$")
-
-# Objects  (tolerate Blender's .001 duplicate suffix)
-_WALL_OBJ_RE = re.compile(r"^\[(Wall|Door)_(Tall|Short)_([A-Za-z]+)_([A-Za-z]+)_(\d+)\](?:\.\d{3})?$")
-_PILLAR_OBJ_RE = re.compile(r"^\[Pillar_(Tall|Short)_(Corner|Seam)_(\d+)\](?:\.\d{3})?$")
+# Type-name keyword -> category. Anything not matched is treated as a window.
+PLAIN_KEYWORD = "Plain"
+HALF_KEYWORD = "Half"
+DOOR_KEYWORD = "Door"
 
 
-@dataclass(frozen=True)
-class ParsedWall:
-    height: str
-    style: str
-    wall_type: str  # e.g. "Plain_1", "SimpleWindow_1", "Door_2"
-    width: float
-    is_door: bool
-    is_window: bool
+# --- data model --------------------------------------------------------------
 
-
-@dataclass(frozen=True)
-class ParsedPillar:
-    height: str
-    pillar_type: str  # "Corner" or "Seam"
-
-
-def parse_wall_pool(name: str) -> Optional[tuple[str, str]]:
-    m = _WALL_POOL_RE.match(name.strip())
-    return (m.group(1), m.group(2)) if m else None
-
-
-def parse_pillar_pool(name: str) -> Optional[str]:
-    m = _PILLAR_POOL_RE.match(name.strip())
-    return m.group(1) if m else None
-
-
-def parse_wall_object(name: str) -> Optional[ParsedWall]:
-    m = _WALL_OBJ_RE.match(name.strip())
-    if not m:
-        return None
-    part, height, style, type_name, index = m.groups()
-    wall_type = f"{type_name}_{index}"
-    is_door = part == "Door" or type_name == "Door"
-    is_window = "Window" in type_name
-    width = WALL_HALF if type_name == "Half" else WALL_FULL
-    return ParsedWall(height, style, wall_type, width, is_door, is_window)
-
-
-def parse_pillar_object(name: str) -> Optional[ParsedPillar]:
-    m = _PILLAR_OBJ_RE.match(name.strip())
-    if not m:
-        return None
-    return ParsedPillar(m.group(1), m.group(2))
-
-
-def looks_like_wall_token(name: str) -> bool:
-    s = name.strip()
-    return s.startswith("[Wall_") or s.startswith("[Door_")
-
-
-def looks_like_pillar_token(name: str) -> bool:
-    return name.strip().startswith("[Pillar_")
-
-
-# ---------------------------------------------------------------------------
-# Data model  (edge-based)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
 class Slot:
-    index: int
-    width: float
-    style: str
-    wall_type: str
-    instance_name: str = ""
-    is_door: bool = False
-    is_window: bool = False
+    """A single wall position within an edge."""
+    __slots__ = ("width", "category", "style", "source", "obj")
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "index": self.index,
-            "width": self.width,
-            "style": self.style,
-            "wall_type": self.wall_type,
-            "instance_name": self.instance_name,
-            "is_door": self.is_door,
-            "is_window": self.is_window,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Slot":
-        return cls(
-            index=int(d["index"]),
-            width=float(d["width"]),
-            style=str(d["style"]),
-            wall_type=str(d["wall_type"]),
-            instance_name=str(d.get("instance_name", "")),
-            is_door=bool(d.get("is_door", False)),
-            is_window=bool(d.get("is_window", False)),
-        )
+    def __init__(self, width, category, style, source):
+        self.width = width          # 2.5 or 1.25
+        self.category = category    # 'Plain' | 'Window' | 'Half' | 'Door'
+        self.style = style
+        self.source = source        # source bpy object to instance
+        self.obj = None             # the placed instance (filled during realize)
 
 
-@dataclass
 class Edge:
-    index: int
-    start: tuple[float, float]
-    end: tuple[float, float]
-    direction: str
-    length: float
-    slots: list[Slot] = field(default_factory=list)
-    is_exterior: bool = True
-    corner_pillar_name: str = ""
-    seam_pillar_names: list[str] = field(default_factory=list)
+    """One straight wall side of a shell footprint."""
+    __slots__ = ("start", "end", "direction", "length", "slots")
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "index": self.index,
-            "start": list(self.start),
-            "end": list(self.end),
-            "direction": self.direction,
-            "length": self.length,
-            "slots": [s.to_dict() for s in self.slots],
-            "is_exterior": self.is_exterior,
-            "corner_pillar_name": self.corner_pillar_name,
-            "seam_pillar_names": list(self.seam_pillar_names),
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Edge":
-        return cls(
-            index=int(d["index"]),
-            start=(float(d["start"][0]), float(d["start"][1])),
-            end=(float(d["end"][0]), float(d["end"][1])),
-            direction=str(d["direction"]),
-            length=float(d["length"]),
-            slots=[Slot.from_dict(s) for s in d.get("slots", [])],
-            is_exterior=bool(d.get("is_exterior", True)),
-            corner_pillar_name=str(d.get("corner_pillar_name", "")),
-            seam_pillar_names=list(d.get("seam_pillar_names", [])),
-        )
+    def __init__(self, start, end, direction, length):
+        self.start = start          # (x, y)
+        self.end = end              # (x, y)
+        self.direction = direction  # 'X+' | 'X-' | 'Y+' | 'Y-'
+        self.length = length
+        self.slots = []
 
 
-@dataclass
 class Shell:
-    shell_id: str
-    origin: tuple[float, float, float]
-    height: str
-    style: str
-    width: float
-    length: float
-    edges: list[Edge] = field(default_factory=list)
-    source: str = "random"  # "random" or "blueprint:<name>"
-    root_empty_name: str = ""
+    """A generated shell: an ordered edge loop plus chosen height pool."""
+    __slots__ = ("name", "loop", "height_pool", "edges", "empty", "walls")
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "shell_id": self.shell_id,
-            "origin": list(self.origin),
-            "height": self.height,
-            "style": self.style,
-            "width": self.width,
-            "length": self.length,
-            "edges": [e.to_dict() for e in self.edges],
-            "source": self.source,
-            "root_empty_name": self.root_empty_name,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Shell":
-        return cls(
-            shell_id=str(d["shell_id"]),
-            origin=(float(d["origin"][0]), float(d["origin"][1]), float(d["origin"][2])),
-            height=str(d["height"]),
-            style=str(d["style"]),
-            width=float(d["width"]),
-            length=float(d["length"]),
-            edges=[Edge.from_dict(e) for e in d.get("edges", [])],
-            source=str(d.get("source", "random")),
-            root_empty_name=str(d.get("root_empty_name", "")),
-        )
+    def __init__(self, name, loop, height_pool):
+        self.name = name
+        self.loop = loop            # CCW list of (x, y) vertices
+        self.height_pool = height_pool
+        self.edges = []
+        self.empty = None
+        self.walls = []             # list of placed Slot objects (for door step)
 
 
-# ---------------------------------------------------------------------------
-# Dimension helpers
-# ---------------------------------------------------------------------------
+# --- name parsing ------------------------------------------------------------
+
+_BRACKET_RE = re.compile(r"^\[(.*)\]$")
 
 
-def snap(value: float, minimum: float = MIN_DIMENSION) -> float:
-    steps = max(1, round(value / STEP))
-    return max(minimum, steps * STEP)
+def _strip_brackets(name):
+    m = _BRACKET_RE.match(name.strip())
+    return m.group(1) if m else name.strip()
 
 
-def snap_range(low: float, high: float) -> tuple[float, float]:
-    lo = snap(low, minimum=MIN_DIMENSION)
-    hi = snap(high, minimum=lo)
-    return (hi, lo) if lo > hi else (lo, hi)
+def parse_wall_collection(name):
+    """[Walls_<Height>_<Style>] -> (height, style) or None."""
+    inner = _strip_brackets(name)
+    parts = inner.split("_")
+    if len(parts) >= 3 and parts[0] == "Walls":
+        return parts[1], parts[2]
+    return None
 
 
-def random_dimension(rng, low: float, high: float) -> float:
-    lo, hi = snap_range(low, high)
-    if lo == hi:
-        return lo
-    steps = int(round((hi - lo) / STEP))
-    return lo + rng.randint(0, steps) * STEP
+def parse_pillar_collection(name):
+    """[Pillars_<Height>] -> height or None."""
+    inner = _strip_brackets(name)
+    parts = inner.split("_")
+    if len(parts) >= 2 and parts[0] == "Pillars":
+        return parts[1]
+    return None
 
 
-def is_fillable(length: float, eps: float = 1e-6) -> bool:
-    units = length / STEP
-    return length >= STEP and abs(units - round(units)) < eps
+def parse_wall_object(name):
+    """[Wall_<Height>_<Style>_<Type>_<Index>] -> dict or None.
+
+    Returns {height, style, type_name, category, width}.
+    Style is assumed to be a single token (no underscores), which matches the
+    naming convention in the plan.
+    """
+    inner = _strip_brackets(name)
+    parts = inner.split("_")
+    if len(parts) < 4 or parts[0] != "Wall":
+        return None
+    height = parts[1]
+    style = parts[2]
+    # index is the last token, type-name the token before it
+    type_name = parts[-2]
+    category = _category_from_type(type_name)
+    width = HALF_WIDTH if HALF_KEYWORD.lower() in type_name.lower() else FULL_WIDTH
+    return {
+        "height": height,
+        "style": style,
+        "type_name": type_name,
+        "category": category,
+        "width": width,
+    }
 
 
-def subdivide_length(length: float, rng) -> list[float]:
-    """Split a side length into 2.5m / 1.25m slot widths that sum exactly."""
-    if not is_fillable(length):
-        raise ValueError(f"Length {length} is not a multiple of {STEP}m.")
-    units = int(round(length / STEP))  # number of 1.25m quarters
-    widths: list[float] = []
-    remaining = units
-    while remaining > 0:
-        if remaining == 1:
-            widths.append(WALL_HALF)
-            remaining -= 1
-        elif remaining == 2:
-            widths.append(WALL_FULL)
-            remaining -= 2
-        elif remaining == 3:
-            if rng.random() < 0.5:
-                widths.extend([WALL_FULL, WALL_HALF])
+def parse_pillar_object(name):
+    """[Pillar_<Height>_<Type>_<Index>] -> dict or None."""
+    inner = _strip_brackets(name)
+    parts = inner.split("_")
+    if len(parts) < 3 or parts[0] != "Pillar":
+        return None
+    return {"height": parts[1], "type_name": parts[2]}
+
+
+def _category_from_type(type_name):
+    low = type_name.lower()
+    if low.startswith(PLAIN_KEYWORD.lower()):
+        return "Plain"
+    if low.startswith(HALF_KEYWORD.lower()):
+        return "Half"
+    if low.startswith(DOOR_KEYWORD.lower()):
+        return "Door"
+    return "Window"
+
+
+# --- model index -------------------------------------------------------------
+
+class ModelIndex:
+    """Indexes the selected wall/pillar collections for fast lookup.
+
+    walls[height][style][width] = {category: [bpy_object, ...]}
+    doors[height][style][width] = [bpy_object, ...]
+    pillars[height][type_name]  = [bpy_object, ...]    (type_name: Corner/Seam)
+    """
+
+    def __init__(self):
+        self.walls = {}
+        self.doors = {}
+        self.pillars = {}
+        self.errors = []
+
+    # -- build ----------------------------------------------------------------
+    def add_wall_collection(self, collection):
+        parsed = parse_wall_collection(collection.name)
+        if not parsed:
+            self.errors.append("Could not parse wall collection: %s" % collection.name)
+            return
+        height, style = parsed
+        for obj in collection.all_objects:
+            info = parse_wall_object(obj.name)
+            if not info:
+                self.errors.append("Could not parse wall object: %s" % obj.name)
+                continue
+            # trust the collection's height/style as authoritative
+            h, s, w, cat = height, style, info["width"], info["category"]
+            if cat == "Door":
+                self.doors.setdefault(h, {}).setdefault(s, {}).setdefault(w, []).append(obj)
             else:
-                widths.extend([WALL_HALF, WALL_FULL])
-            remaining = 0
-        else:
-            if rng.random() < 0.75:
-                widths.append(WALL_FULL)
-                remaining -= 2
-            else:
-                widths.append(WALL_HALF)
-                remaining -= 1
+                bucket = (self.walls.setdefault(h, {})
+                          .setdefault(s, {})
+                          .setdefault(w, {}))
+                bucket.setdefault(cat, []).append(obj)
+
+    def add_pillar_collection(self, collection):
+        height = parse_pillar_collection(collection.name)
+        if not height:
+            self.errors.append("Could not parse pillar collection: %s" % collection.name)
+            return
+        for obj in collection.all_objects:
+            info = parse_pillar_object(obj.name)
+            if not info:
+                self.errors.append("Could not parse pillar object: %s" % obj.name)
+                continue
+            self.pillars.setdefault(height, {}).setdefault(info["type_name"], []).append(obj)
+
+    # -- queries --------------------------------------------------------------
+    def height_pools(self):
+        return [h for h in self.walls.keys()]
+
+    def styles_for_height(self, height):
+        return list(self.walls.get(height, {}).keys())
+
+    def wall_bucket(self, height, style, width):
+        return self.walls.get(height, {}).get(style, {}).get(width, {})
+
+    def pick_wall(self, rng, height, style, width, want_window, window_room):
+        """Pick a wall source object and return (object, category).
+
+        For HALF width returns a 'Half' object. For FULL width chooses between
+        Plain and Window per want_window/window_room with graceful fallback.
+        """
+        bucket = self.wall_bucket(height, style, width)
+        if width == HALF_WIDTH:
+            lst = bucket.get("Half") or bucket.get("Plain")
+            if lst:
+                return rng.choice(lst), "Half"
+            return None, "Half"
+
+        plains = bucket.get("Plain", [])
+        windows = bucket.get("Window", [])
+        if want_window and windows and window_room >= width:
+            return rng.choice(windows), "Window"
+        if plains:
+            return rng.choice(plains), "Plain"
+        if windows:
+            return rng.choice(windows), "Window"
+        return None, "Plain"
+
+    def pick_door(self, rng, height, style, width):
+        lst = self.doors.get(height, {}).get(style, {}).get(width)
+        if lst:
+            return rng.choice(lst)
+        # fall back to any style of the same height/width
+        for s, by_width in self.doors.get(height, {}).items():
+            if by_width.get(width):
+                return rng.choice(by_width[width])
+        return None
+
+    def pick_pillar(self, rng, height, type_name):
+        lst = self.pillars.get(height, {}).get(type_name)
+        if lst:
+            return rng.choice(lst)
+        # fall back to any pillar type for the height
+        for t, objs in self.pillars.get(height, {}).items():
+            if objs:
+                return rng.choice(objs)
+        return None
+
+    def has_walls(self):
+        return bool(self.walls)
+
+
+def build_model_index(wall_collections, pillar_collections):
+    idx = ModelIndex()
+    for coll in wall_collections:
+        idx.add_wall_collection(coll)
+    for coll in pillar_collections:
+        idx.add_pillar_collection(coll)
+    return idx
+
+
+# --- width subdivision -------------------------------------------------------
+
+def snap_to_grid(value):
+    return round(value / GRID) * GRID
+
+
+def subdivide_side(length, rng):
+    """Return a list of slot widths (2.5 / 1.25) summing to length.
+
+    Fills the side with as many full 2.5m panels as possible and uses a single
+    1.25m half panel only to fill the leftover gap when the side is an odd
+    multiple of 1.25m. The half's position along the side is randomized.
+    length must be a multiple of 1.25m.
+    """
+    units = int(round(length / HALF_WIDTH))  # number of 1.25m units
+    if units <= 0:
+        return []
+    halves = units % 2          # 0 or 1: only used to fill an odd leftover gap
+    fulls = (units - halves) // 2
+    widths = [FULL_WIDTH] * fulls + [HALF_WIDTH] * halves
+    rng.shuffle(widths)
     return widths
 
 
-# ---------------------------------------------------------------------------
-# Geometry  (edge producers + placement math)
-# ---------------------------------------------------------------------------
+# --- geometry ----------------------------------------------------------------
+
+def signed_area(loop):
+    area = 0.0
+    n = len(loop)
+    for i in range(n):
+        x1, y1 = loop[i]
+        x2, y2 = loop[(i + 1) % n]
+        area += x1 * y2 - x2 * y1
+    return area * 0.5
 
 
-def build_rectangle_edges(width: float, length: float) -> list[Edge]:
-    """4 edges of a rectangle, wound counter-clockwise from (0,0)."""
-    if not is_fillable(width) or not is_fillable(length):
-        raise ValueError("Rectangle sides must be fillable in 1.25m steps.")
-    specs = [
-        ((0.0, 0.0), (width, 0.0), "X+", width),
-        ((width, 0.0), (width, length), "Y+", length),
-        ((width, length), (0.0, length), "X-", width),
-        ((0.0, length), (0.0, 0.0), "Y-", length),
-    ]
-    return [Edge(i, s, e, d, ln) for i, (s, e, d, ln) in enumerate(specs)]
+def ensure_ccw(loop):
+    """Return the loop wound counter-clockwise (positive signed area)."""
+    if signed_area(loop) < 0:
+        return list(reversed(loop))
+    return list(loop)
 
 
-def edges_from_perimeter(points: list[tuple[float, float]]) -> list[Edge]:
-    """Build axis-aligned edges from an ordered, closed perimeter loop.
+def direction_label(travel):
+    x, y = travel
+    if abs(x) >= abs(y):
+        return "X+" if x >= 0 else "X-"
+    return "Y+" if y >= 0 else "Y-"
 
-    Consecutive collinear segments are merged. Used by blueprint mode; the
-    output feeds the exact same placement pipeline as rectangle edges.
+
+def outward_rotation_z(travel):
+    """Z rotation so the model's feature side faces outward.
+
+    Assumes a CCW loop: outward normal = travel rotated -90deg -> (ty, -tx).
+    The models' visible features (windows/doors) sit on local -Y, so we rotate
+    so local -Y points outward (i.e. local +Y faces the shell interior).
     """
-    if len(points) < 4:
-        raise ValueError("Perimeter needs at least 4 points.")
-    if _signed_area(points) < 0.0:
-        points = list(reversed(points))
-
-    raw: list[list] = []
-    for i, start in enumerate(points):
-        end = points[(i + 1) % len(points)]
-        direction, length = _axis_dir_len(start, end)
-        raw.append([start, end, direction, length])
-
-    merged: list[list] = []
-    for start, end, direction, length in raw:
-        if merged and merged[-1][2] == direction:
-            merged[-1][1] = end
-            merged[-1][3] += length
-        else:
-            merged.append([start, end, direction, length])
-    # wrap-around merge
-    if len(merged) > 1 and merged[0][2] == merged[-1][2]:
-        merged[0][0] = merged[-1][0]
-        merged[0][3] += merged[-1][3]
-        merged.pop()
-
-    edges: list[Edge] = []
-    for i, (start, end, direction, length) in enumerate(merged):
-        edges.append(Edge(i, start, end, direction, snap(length, minimum=STEP)))
-    return edges
+    ox, oy = travel[1], -travel[0]
+    return math.atan2(-ox, oy) + math.pi
 
 
-def _axis_dir_len(start, end, eps: float = 1e-3) -> tuple[str, float]:
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    if abs(dx) > eps and abs(dy) > eps:
-        raise ValueError(f"Edge {start}->{end} is not axis-aligned.")
-    if abs(dx) <= eps and abs(dy) <= eps:
-        raise ValueError("Zero-length edge.")
-    if abs(dx) > eps:
-        return ("X+" if dx > 0 else "X-"), abs(dx)
-    return ("Y+" if dy > 0 else "Y-"), abs(dy)
+# --- placement ---------------------------------------------------------------
+
+def get_generated_collection():
+    coll = bpy.data.collections.get(GENERATED_COLLECTION)
+    if coll is None:
+        coll = bpy.data.collections.new(GENERATED_COLLECTION)
+        bpy.context.scene.collection.children.link(coll)
+    return coll
 
 
-def _signed_area(points: list[tuple[float, float]]) -> float:
-    total = 0.0
-    for i, p in enumerate(points):
-        q = points[(i + 1) % len(points)]
-        total += p[0] * q[1] - q[0] * p[1]
-    return total * 0.5
-
-
-def rotation_for(direction: str) -> float:
-    return DIRECTION_ROTATION[direction]
-
-
-def slot_center(edge: Edge, slot_index: int, slot_width: float, origin) -> tuple[float, float, float]:
-    offset = sum(s.width for s in edge.slots[:slot_index])
-    sx, sy = edge.start
-    ox, oy, oz = origin
-    if edge.direction == "X+":
-        return (ox + sx + offset + slot_width / 2, oy + sy, oz)
-    if edge.direction == "X-":
-        return (ox + sx - offset - slot_width / 2, oy + sy, oz)
-    if edge.direction == "Y+":
-        return (ox + sx, oy + sy + offset + slot_width / 2, oz)
-    if edge.direction == "Y-":
-        return (ox + sx, oy + sy - offset - slot_width / 2, oz)
-    raise ValueError(edge.direction)
-
-
-def edge_end_point(edge: Edge, origin) -> tuple[float, float, float]:
-    ox, oy, oz = origin
-    return (ox + edge.end[0], oy + edge.end[1], oz)
-
-
-def seam_point(edge: Edge, boundary: int, origin) -> tuple[float, float, float]:
-    offset = sum(s.width for s in edge.slots[:boundary])
-    sx, sy = edge.start
-    ox, oy, oz = origin
-    if edge.direction == "X+":
-        return (ox + sx + offset, oy + sy, oz)
-    if edge.direction == "X-":
-        return (ox + sx - offset, oy + sy, oz)
-    if edge.direction == "Y+":
-        return (ox + sx, oy + sy + offset, oz)
-    if edge.direction == "Y-":
-        return (ox + sx, oy + sy - offset, oz)
-    raise ValueError(edge.direction)
-
-
-# ---------------------------------------------------------------------------
-# Model index
-# ---------------------------------------------------------------------------
-
-
-class ModelIndex:
-    """Maps parsed model keys to whatever value the caller stores (bpy object
-    or, in tests, a name string)."""
-
-    def __init__(self) -> None:
-        self.walls: dict[tuple, Any] = {}   # (height, style, width, wall_type)
-        self.doors: dict[tuple, Any] = {}   # (height, style, width, wall_type)
-        self.pillars: dict[tuple, Any] = {}  # (height, pillar_type)
-
-    def add_wall(self, value: Any, parsed: ParsedWall) -> None:
-        key = (parsed.height, parsed.style, parsed.width, parsed.wall_type)
-        if parsed.is_door:
-            self.doors[key] = value
-        else:
-            self.walls[key] = value
-
-    def add_pillar(self, value: Any, parsed: ParsedPillar) -> None:
-        self.pillars[(parsed.height, parsed.pillar_type)] = value
-
-    def wall(self, height, style, width, wall_type) -> Any:
-        return self.walls.get((height, style, width, wall_type))
-
-    def pillar(self, height, pillar_type) -> Any:
-        return self.pillars.get((height, pillar_type))
-
-    def styles_for_height(self, height: str) -> list[str]:
-        return sorted({k[1] for k in self.walls if k[0] == height})
-
-    def heights(self) -> list[str]:
-        return sorted({k[0] for k in self.walls})
-
-    def plain_types(self, height, style, width) -> list[str]:
-        return sorted({
-            k[3] for k in self.walls
-            if k[0] == height and k[1] == style and k[2] == width
-            and "Window" not in k[3] and "Door" not in k[3]
-        })
-
-    def window_types(self, height, style, width) -> list[str]:
-        return sorted({
-            k[3] for k in self.walls
-            if k[0] == height and k[1] == style and k[2] == width and "Window" in k[3]
-        })
-
-    def door_for(self, height, style, width) -> Any:
-        for k, v in self.doors.items():
-            if k[0] == height and k[1] == style and k[2] == width:
-                return v
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Per-shell planning  (fill edges with slots + wall types)
-# ---------------------------------------------------------------------------
-
-
-def plan_shell(
-    shell: Shell,
-    index: ModelIndex,
-    rng,
-    mix_styles: bool,
-    styles: list[str],
-    window_probability: float,
-) -> list[str]:
-    """Subdivide each edge and assign a wall type to every slot. Returns warnings."""
-    warnings: list[str] = []
-    usable_styles = list(styles) or [shell.style]
-
-    for edge in shell.edges:
-        if not edge.is_exterior:
-            continue
-        widths = subdivide_length(edge.length, rng)
-        slots: list[Slot] = []
-        for i, width in enumerate(widths):
-            style = rng.choice(usable_styles) if mix_styles else shell.style
-            wall_type = _pick_wall_type(index, shell.height, style, width, rng, window_probability)
-            if wall_type is None:
-                warnings.append(f"No wall model for {shell.height}/{style}/{width}m on shell {shell.shell_id}.")
-                wall_type = "Plain_1"
-            slots.append(Slot(
-                index=i,
-                width=width,
-                style=style,
-                wall_type=wall_type,
-                is_window="Window" in wall_type,
-            ))
-        _enforce_window_cap(slots, index, shell.height, rng)
-        edge.slots = slots
-    return warnings
-
-
-def _pick_wall_type(index, height, style, width, rng, window_probability) -> Optional[str]:
-    plains = index.plain_types(height, style, width)
-    windows = index.window_types(height, style, width)
-    if not plains and not windows:
-        return None
-    if windows and plains and rng.random() < window_probability:
-        return rng.choice(windows)
-    if plains:
-        return rng.choice(plains)
-    return rng.choice(windows)
-
-
-def _enforce_window_cap(slots: list[Slot], index, height, rng) -> None:
-    if not slots:
+def clear_generated_collection():
+    coll = bpy.data.collections.get(GENERATED_COLLECTION)
+    if coll is None:
         return
-    cap = int(len(slots) * MAX_WINDOW_RATIO)
-    if cap >= len(slots):
-        cap = len(slots) - 1 if len(slots) > 1 else 0
-    window_idx = [i for i, s in enumerate(slots) if s.is_window]
-    while len(window_idx) > cap:
-        i = rng.choice(window_idx)
-        plains = index.plain_types(height, slots[i].style, slots[i].width)
-        if not plains:
-            break
-        slots[i].wall_type = rng.choice(plains)
-        slots[i].is_window = False
-        window_idx.remove(i)
+    for obj in list(coll.all_objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
 
 
-def plan_doors(shell: Shell, rng, ensure_door: bool) -> list[tuple[Edge, Slot]]:
-    """Choose which placed plain FULL-width walls become doors.
+def _instance(source, name, location, rot_z, collection):
+    """Create a linked duplicate (shared mesh data) of source."""
+    new = source.copy()  # shares .data by default -> linked duplicate
+    new.name = name
+    new.location = (location[0], location[1], 0.0)
+    new.rotation_euler = (0.0, 0.0, rot_z)
+    collection.objects.link(new)
+    return new
 
-    Returns (edge, slot) pairs to swap. Honors max 1/edge, max 2/shell, and
-    only swaps full-width plain (non-window) exterior slots.
-    """
-    candidates: list[tuple[Edge, Slot]] = []
-    for edge in shell.edges:
-        if not edge.is_exterior:
+
+def _parent_keep_transform(child, parent):
+    child.parent = parent
+    child.matrix_parent_inverse = parent.matrix_world.inverted()
+
+
+def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, collection):
+    """Instance walls and pillars for one footprint loop. Returns a Shell."""
+    loop = ensure_ccw(loop)
+    shell = Shell(shell_name, loop, height_pool)
+
+    cx = sum(p[0] for p in loop) / len(loop)
+    cy = sum(p[1] for p in loop) / len(loop)
+
+    empty = bpy.data.objects.new(shell_name, None)
+    empty.empty_display_type = 'PLAIN_AXES'
+    empty.location = (cx, cy, 0.0)
+    collection.objects.link(empty)
+    shell.empty = empty
+
+    single_style = None if settings.mix_styles else (styles[0] if len(styles) == 1 else rng.choice(styles))
+
+    n = len(loop)
+    for i in range(n):
+        v1 = loop[i]
+        v2 = loop[(i + 1) % n]
+        dx, dy = (v2[0] - v1[0]), (v2[1] - v1[1])
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
             continue
-        for slot in edge.slots:
-            if slot.width == WALL_FULL and not slot.is_window and not slot.is_door:
-                candidates.append((edge, slot))
+        travel = (dx / length, dy / length)
+        edge = Edge(v1, v2, direction_label(travel), length)
+        rot_z = outward_rotation_z(travel)
+
+        widths = subdivide_side(length, rng)
+        window_budget = 0.8 * length      # windows must be < 80% of a side
+        window_used = 0.0
+        cum = 0.0
+        for si, w in enumerate(widths):
+            style = single_style if single_style else rng.choice(styles)
+            want_window = (rng.random() > settings.wall_type_probability)
+            room = window_budget - window_used - 1e-6
+            source, category = midx.pick_wall(rng, height_pool, style, w, want_window, room)
+            slot = Slot(w, category, style, source)
+            if source is not None:
+                center = (v1[0] + travel[0] * (cum + w / 2.0),
+                          v1[1] + travel[1] * (cum + w / 2.0))
+                inst = _instance(source, "[%s_W]" % shell_name.strip("[]"),
+                                 center, rot_z, collection)
+                _parent_keep_transform(inst, empty)
+                slot.obj = inst
+                slot_meta = {
+                    "slot": slot,
+                    "side": i,
+                    "width": w,
+                    "category": category,
+                    "style": style,
+                }
+                shell.walls.append(slot_meta)
+                if category == "Window":
+                    window_used += w
+            edge.slots.append(slot)
+            cum += w
+
+            # seam pillar between this slot and the next
+            if settings.use_seam_pillars and si < len(widths) - 1:
+                src = midx.pick_pillar(rng, height_pool, "Seam")
+                if src:
+                    pt = (v1[0] + travel[0] * cum, v1[1] + travel[1] * cum)
+                    p = _instance(src, "[%s_P]" % shell_name.strip("[]"), pt, rot_z, collection)
+                    _parent_keep_transform(p, empty)
+
+        # corner pillar at the edge start vertex
+        if settings.use_corner_pillars:
+            src = midx.pick_pillar(rng, height_pool, "Corner")
+            if src:
+                p = _instance(src, "[%s_P]" % shell_name.strip("[]"), v1, rot_z, collection)
+                _parent_keep_transform(p, empty)
+
+        shell.edges.append(edge)
+
+    return shell
+
+
+# --- door post-processing ----------------------------------------------------
+
+def apply_doors(shell, settings, rng, midx, report):
+    """Swap up to two placed plain (2.5m) walls for doors of the same spec."""
+    candidates = [m for m in shell.walls
+                  if m["category"] == "Plain" and m["width"] == FULL_WIDTH]
     if not candidates:
-        return []
+        report("Shell %s has no plain walls to convert to a door." % shell.name)
+        return 0
 
     rng.shuffle(candidates)
-    chosen: list[tuple[Edge, Slot]] = []
-    used_edges: set[int] = set()
-    target = MAX_DOORS_PER_SHELL if ensure_door else rng.randint(0, MAX_DOORS_PER_SHELL)
-    for edge, slot in candidates:
-        if len(chosen) >= target:
+    used_sides = set()
+    placed = 0
+    for meta in candidates:
+        if placed >= 2:
             break
-        if edge.index in used_edges:
+        if meta["side"] in used_sides:
             continue
-        chosen.append((edge, slot))
-        used_edges.add(edge.index)
-    if ensure_door and not chosen and candidates:
-        chosen.append(candidates[0])
-    return chosen
+        door_src = midx.pick_door(rng, shell.height_pool, meta["style"], FULL_WIDTH)
+        if door_src is None:
+            continue
+        obj = meta["slot"].obj
+        obj.data = door_src.data
+        meta["slot"].category = "Door"
+        meta["category"] = "Door"
+        used_sides.add(meta["side"])
+        placed += 1
+
+    if placed == 0:
+        report("Shell %s: no compatible door models found." % shell.name)
+    return placed
+
+
+# --- footprint producers -----------------------------------------------------
+
+def rectangle_loop(origin_x, origin_y, width, length):
+    """CCW rectangle vertices."""
+    return [
+        (origin_x, origin_y),
+        (origin_x + width, origin_y),
+        (origin_x + width, origin_y + length),
+        (origin_x, origin_y + length),
+    ]
+
+
+def pick_dimension(rng, lo, hi):
+    """Pick a 1.25m-snapped dimension within [lo, hi], min one full wall."""
+    lo = max(FULL_WIDTH, snap_to_grid(lo))
+    hi = max(lo, snap_to_grid(hi))
+    units_lo = int(round(lo / GRID))
+    units_hi = int(round(hi / GRID))
+    return rng.randint(units_lo, units_hi) * GRID

@@ -222,8 +222,6 @@ class HSG_OT_generate(Operator):
                         "No closed blueprint loops. Use 'Draw Blueprint' first.")
             return 0
         count = 0
-        built_edges = set()      # de-duplicate walls on shared/internal edges
-        built_pillars = set()    # de-duplicate pillars at shared corners/seams
         for n, loop in enumerate(loops):
             rng = random.Random(s.seed + 7919 * (n + 1))
             height, styles = self._pick_height_styles(midx, rng)
@@ -231,9 +229,7 @@ class HSG_OT_generate(Operator):
                 continue
             name = "[Generated_Shell_BP_%d]" % n
             shell = core.realize_shell(loop, height, styles, s, rng, midx,
-                                       name, collection,
-                                       built_edges=built_edges,
-                                       built_pillars=built_pillars)
+                                       name, collection)
             if s.ensure_door:
                 core.apply_doors(shell, s, rng,
                                  midx, lambda m: self.report({'WARNING'}, m))
