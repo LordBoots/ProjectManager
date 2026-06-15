@@ -269,18 +269,17 @@ def snap_to_grid(value):
 
 
 def subdivide_side(length, rng):
-    """Return a randomized list of slot widths (2.5 / 1.25) summing to length.
+    """Return a list of slot widths (2.5 / 1.25) summing to length.
 
-    Biased toward fewer half-walls. length must be a multiple of 1.25m.
+    Fills the side with as many full 2.5m panels as possible and uses a single
+    1.25m half panel only to fill the leftover gap when the side is an odd
+    multiple of 1.25m. The half's position along the side is randomized.
+    length must be a multiple of 1.25m.
     """
     units = int(round(length / HALF_WIDTH))  # number of 1.25m units
     if units <= 0:
         return []
-    parity = units % 2
-    half_options = list(range(parity, units + 1, 2))  # valid half-wall counts
-    # weight toward fewer halves
-    weights = [1.0 / (i + 1) for i in range(len(half_options))]
-    halves = rng.choices(half_options, weights=weights, k=1)[0]
+    halves = units % 2          # 0 or 1: only used to fill an odd leftover gap
     fulls = (units - halves) // 2
     widths = [FULL_WIDTH] * fulls + [HALF_WIDTH] * halves
     rng.shuffle(widths)

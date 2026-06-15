@@ -60,8 +60,9 @@ def has_blueprint():
 def get_blueprint_loops():
     """Return a list of CCW vertex loops extracted from the drawn graph.
 
-    Collinear consecutive vertices are merged so each loop edge is one wall side.
-    Open components (vertices without degree 2) are skipped.
+    Uses a planar face-finding traversal so internal/shared walls (degree-3+
+    junctions) are handled: every enclosed cell becomes its own loop. Collinear
+    vertices are merged so each loop edge is one wall side.
     """
     points = [(p[0], p[1]) for p in blueprint_data["points"]]
     edges = blueprint_data["edges"]
@@ -69,50 +70,67 @@ def get_blueprint_loops():
 
 
 def _extract_loops(points, edges):
-    adj = {i: [] for i in range(len(points))}
+    """Find every minimal enclosed face of the (planar) drawn graph.
+
+    Method: build directed half-edges and, at each vertex, sort neighbors by
+    angle. Walking a half-edge u->v, the next face edge is the neighbor of v
+    immediately clockwise from the reverse direction (v->u). This carves out
+    each interior face (CCW / positive signed area). Each connected component's
+    single outer boundary comes out clockwise (negative) and is discarded.
+    """
+    if not edges:
+        return []
+
+    adj = {}
     for a, b in edges:
+        if a == b:
+            continue
+        adj.setdefault(a, [])
+        adj.setdefault(b, [])
         if b not in adj[a]:
             adj[a].append(b)
         if a not in adj[b]:
             adj[b].append(a)
 
-    visited_edges = set()
+    def angle(u, v):
+        return math.atan2(points[v][1] - points[u][1],
+                          points[v][0] - points[u][0])
+
+    for u in adj:
+        adj[u].sort(key=lambda v, u=u: angle(u, v))
+
+    def next_half_edge(u, v):
+        # at v, find where we came from (u) and step to the previous neighbor
+        # in CCW order -> the most clockwise turn -> traces interior faces CW.
+        nbrs = adj[v]
+        i = nbrs.index(u)
+        return v, nbrs[(i - 1) % len(nbrs)]
+
+    visited = set()
     loops = []
-
-    def edge_key(a, b):
-        return (a, b) if a < b else (b, a)
-
-    for start in range(len(points)):
-        if len(adj[start]) != 2:
-            continue  # only trace clean degree-2 vertices
-        # is there still an unused edge from start?
-        nxt = None
-        for cand in adj[start]:
-            if edge_key(start, cand) not in visited_edges:
-                nxt = cand
-                break
-        if nxt is None:
+    for a, b in edges:
+        if a == b:
             continue
-
-        cycle = [start]
-        prev = start
-        cur = nxt
-        visited_edges.add(edge_key(prev, cur))
-        ok = True
-        while cur != start:
-            if len(adj[cur]) != 2:
-                ok = False
-                break
-            cycle.append(cur)
-            a, b = adj[cur]
-            step = a if a != prev else b
-            visited_edges.add(edge_key(cur, step))
-            prev, cur = cur, step
-            if len(cycle) > len(points) + 1:
-                ok = False
-                break
-        if ok and len(cycle) >= 3:
-            verts = [points[i] for i in cycle]
+        for u0, v0 in ((a, b), (b, a)):
+            if (u0, v0) in visited:
+                continue
+            face = []
+            u, v = u0, v0
+            guard = 0
+            limit = 4 * len(edges) + 8
+            while (u, v) not in visited:
+                visited.add((u, v))
+                face.append(u)
+                u, v = next_half_edge(u, v)
+                guard += 1
+                if guard > limit:
+                    face = []
+                    break
+            if len(face) < 3:
+                continue
+            verts = [points[i] for i in face]
+            if core.signed_area(verts) <= 1e-9:
+                continue  # outer boundary (CW) / degenerate -> skip
             merged = _merge_collinear(verts)
             if len(merged) >= 3:
                 loops.append(core.ensure_ccw(merged))
