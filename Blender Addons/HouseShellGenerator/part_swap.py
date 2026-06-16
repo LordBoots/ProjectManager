@@ -37,7 +37,7 @@ class HSG_OT_clear_swap_target(Operator):
 
 
 class HSG_OT_replace_part(Operator):
-    """Replace the stored target with a linked duplicate of the active object"""
+    """Replace the stored target with a duplicate of the active object"""
     bl_idname = "hsg.replace_part"
     bl_label = "Replace Part"
     bl_options = {'REGISTER', 'UNDO'}

@@ -418,9 +418,17 @@ def parent_objects_to_empty(context, children, parent):
         view_layer.objects.active = prev_active
 
 
+def _duplicate_mesh_object(source):
+    """Copy an object with its own mesh data (Shift+D style, not Alt+D)."""
+    new = source.copy()
+    if source.data is not None:
+        new.data = source.data.copy()
+    return new
+
+
 def _instance(source, name, location, rot_z, collection):
-    """Create a linked duplicate (shared mesh data) of source."""
-    new = source.copy()  # shares .data by default -> linked duplicate
+    """Place a mesh duplicate (independent geometry) of source."""
+    new = _duplicate_mesh_object(source)
     new.name = name
     new.location = (location[0], location[1], 0.0)
     new.rotation_euler = (0.0, 0.0, rot_z)
@@ -447,7 +455,7 @@ def replace_placed_part(target, source):
 
     bpy.data.objects.remove(target, do_unlink=True)
 
-    new = source.copy()
+    new = _duplicate_mesh_object(source)
     new.name = name
     for coll in collections:
         if new.name not in coll.objects:
@@ -576,7 +584,7 @@ def apply_doors(shell, settings, rng, midx, report):
         if door_src is None:
             continue
         obj = meta["slot"].obj
-        obj.data = door_src.data
+        obj.data = door_src.data.copy()
         meta["slot"].category = "Door"
         meta["category"] = "Door"
         used_sides.add(meta["side"])
