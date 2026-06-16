@@ -171,9 +171,9 @@ class HSG_OT_generate(Operator):
         collection = core.get_generated_collection()
 
         if s.generation_mode == 'BLUEPRINT':
-            count = self._generate_blueprint(s, midx, collection)
+            count = self._generate_blueprint(context, s, midx, collection)
         else:
-            count = self._generate_grid(s, midx, collection)
+            count = self._generate_grid(context, s, midx, collection)
 
         if count == 0:
             self.report({'WARNING'}, "No shells were generated.")
@@ -199,7 +199,7 @@ class HSG_OT_generate(Operator):
         return min(xs), min(ys), max(xs), max(ys)
 
     # -- grid mode ------------------------------------------------------------
-    def _generate_grid(self, s, midx, collection):
+    def _generate_grid(self, context, s, midx, collection):
         col_step = core.snap_to_grid(s.width_max) + s.spacing
         row_step = core.snap_to_grid(s.length_max) + s.spacing
         count = 0
@@ -225,7 +225,7 @@ class HSG_OT_generate(Operator):
                 if not styles:
                     continue
                 name = "[Generated_Shell_%d_%d]" % (r, c)
-                shell = core.realize_shell(loop, height, styles, s, rng, midx,
+                shell = core.realize_shell(context, loop, height, styles, s, rng, midx,
                                            name, collection)
                 if s.ensure_door:
                     core.apply_doors(shell, s, rng,
@@ -256,7 +256,7 @@ class HSG_OT_generate(Operator):
                     right.walls.remove(meta)
 
     # -- blueprint mode -------------------------------------------------------
-    def _generate_blueprint(self, s, midx, collection):
+    def _generate_blueprint(self, context, s, midx, collection):
         loops = blueprint.get_blueprint_loops()
         if not loops:
             self.report({'ERROR'},
@@ -281,7 +281,7 @@ class HSG_OT_generate(Operator):
                     name = "[Generated_Shell_BP_%d]" % n
                 else:
                     name = "[Generated_Shell_BP_%d_%d]" % (gen, n)
-                shell = core.realize_shell(translated, height, styles, s, rng, midx,
+                shell = core.realize_shell(context, translated, height, styles, s, rng, midx,
                                            name, collection)
                 if s.ensure_door:
                     core.apply_doors(shell, s, rng,

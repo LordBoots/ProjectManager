@@ -381,6 +381,43 @@ def clear_generated_collection():
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def loop_bbox(loop):
+    """Axis-aligned bounds of a vertex loop -> (min_x, min_y, max_x, max_y)."""
+    xs = [p[0] for p in loop]
+    ys = [p[1] for p in loop]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def loop_bbox_center(loop):
+    """Center of the loop's 2D bounding box."""
+    min_x, min_y, max_x, max_y = loop_bbox(loop)
+    return ((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
+
+
+def parent_objects_to_empty(context, children, parent):
+    """Parent meshes to empty using Blender's standard Object parent (Ctrl+P)."""
+    children = [o for o in children if o is not None and o != parent]
+    if not children:
+        return
+
+    view_layer = context.view_layer
+    prev_active = view_layer.objects.active
+    prev_selected = [o for o in view_layer.objects if o.select_get()]
+
+    try:
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in children:
+            obj.select_set(True)
+        parent.select_set(True)
+        view_layer.objects.active = parent
+        bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
+    finally:
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in prev_selected:
+            obj.select_set(True)
+        view_layer.objects.active = prev_active
+
+
 def _instance(source, name, location, rot_z, collection):
     """Create a linked duplicate (shared mesh data) of source."""
     new = source.copy()  # shares .data by default -> linked duplicate
@@ -435,18 +472,13 @@ def describe_part(obj):
     return None
 
 
-def _parent_keep_transform(child, parent):
-    child.parent = parent
-    child.matrix_parent_inverse = parent.matrix_world.inverted()
-
-
-def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, collection):
+def realize_shell(context, loop, height_pool, styles, settings, rng, midx,
+                  shell_name, collection):
     """Instance walls and pillars for one footprint loop. Returns a Shell."""
     loop = ensure_ccw(loop)
     shell = Shell(shell_name, loop, height_pool)
 
-    cx = sum(p[0] for p in loop) / len(loop)
-    cy = sum(p[1] for p in loop) / len(loop)
+    cx, cy = loop_bbox_center(loop)
 
     empty = bpy.data.objects.new(shell_name, None)
     empty.empty_display_type = 'PLAIN_AXES'
@@ -454,6 +486,7 @@ def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, co
     collection.objects.link(empty)
     shell.empty = empty
 
+    children = []
     single_style = None if settings.mix_styles else (styles[0] if len(styles) == 1 else rng.choice(styles))
 
     n = len(loop)
@@ -485,7 +518,7 @@ def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, co
                           v1[1] + travel[1] * (cum + w / 2.0))
                 inst = _instance(source, "[%s_W]" % shell_name.strip("[]"),
                                  center, rot_z, collection)
-                _parent_keep_transform(inst, empty)
+                children.append(inst)
                 slot.obj = inst
                 slot_meta = {
                     "slot": slot,
@@ -506,17 +539,18 @@ def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, co
                 if src:
                     pt = (v1[0] + travel[0] * cum, v1[1] + travel[1] * cum)
                     p = _instance(src, "[%s_P]" % shell_name.strip("[]"), pt, rot_z, collection)
-                    _parent_keep_transform(p, empty)
+                    children.append(p)
 
         # corner pillar at the edge start vertex
         if settings.use_corner_pillars:
             src = midx.pick_pillar(rng, height_pool, "Corner")
             if src:
                 p = _instance(src, "[%s_P]" % shell_name.strip("[]"), v1, rot_z, collection)
-                _parent_keep_transform(p, empty)
+                children.append(p)
 
         shell.edges.append(edge)
 
+    parent_objects_to_empty(context, children, empty)
     return shell
 
 
