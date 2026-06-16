@@ -65,6 +65,19 @@ class HSG_Settings(PropertyGroup):
     length_max: FloatProperty(name="Length Max", default=10.0, min=2.5, soft_max=50.0)
 
     seed: IntProperty(name="Seed", default=0)
+    random_seed: BoolProperty(
+        name="Random Seed",
+        default=False,
+        description="Pick a new random seed for each shell instead of using the fixed seed",
+    )
+
+    blueprint_count: IntProperty(
+        name="Generate Count",
+        default=1,
+        min=1,
+        soft_max=20,
+        description="How many blueprint instances to generate (same footprint, spaced apart)",
+    )
 
     # probabilities
     wall_style_probability: FloatProperty(
@@ -72,6 +85,10 @@ class HSG_Settings(PropertyGroup):
     wall_type_probability: FloatProperty(
         name="Plain Wall Weight", default=0.6, min=0.0, max=1.0,
         description="Higher = more plain walls, fewer windows")
+    bay_window_probability: FloatProperty(
+        name="Bay Window Weight", default=0.5, min=0.0, max=1.0,
+        description="When a window is placed, chance of a bay window vs all other window types",
+    )
 
     # grid
     columns: IntProperty(name="Columns", default=2, min=1, soft_max=20)
@@ -164,6 +181,23 @@ class HSG_OT_generate(Operator):
             self.report({'INFO'}, "Generated %d shell(s)." % count)
         return {'FINISHED'}
 
+    @staticmethod
+    def _shell_rng(s, slot_key):
+        """RNG for one shell. slot_key only used when random_seed is off."""
+        if s.random_seed:
+            return random.Random(random.randint(0, 2147483647))
+        return random.Random(s.seed + slot_key)
+
+    @staticmethod
+    def _translate_loop(loop, dx, dy):
+        return [(x + dx, y + dy) for x, y in loop]
+
+    @staticmethod
+    def _loops_bbox(loops):
+        xs = [x for loop in loops for x, _y in loop]
+        ys = [y for loop in loops for _x, y in loop]
+        return min(xs), min(ys), max(xs), max(ys)
+
     # -- grid mode ------------------------------------------------------------
     def _generate_grid(self, s, midx, collection):
         col_step = core.snap_to_grid(s.width_max) + s.spacing
@@ -174,7 +208,7 @@ class HSG_OT_generate(Operator):
             row_length = None
             x_cursor = 0.0
             for c in range(s.columns):
-                rng = random.Random(s.seed + r * 1000 + c)
+                rng = self._shell_rng(s, r * 1000 + c)
                 width = core.pick_dimension(rng, s.width_min, s.width_max)
                 if s.connect_shells:
                     if row_length is None:
@@ -228,19 +262,31 @@ class HSG_OT_generate(Operator):
             self.report({'ERROR'},
                         "No closed blueprint loops. Use 'Draw Blueprint' first.")
             return 0
+
+        _min_x, _min_y, max_x, _max_y = self._loops_bbox(loops)
+        footprint_width = max_x - _min_x
+        gen_step = footprint_width + s.spacing
+
         count = 0
-        for n, loop in enumerate(loops):
-            rng = random.Random(s.seed + 7919 * (n + 1))
-            height, styles = self._pick_height_styles(midx, rng)
-            if not styles:
-                continue
-            name = "[Generated_Shell_BP_%d]" % n
-            shell = core.realize_shell(loop, height, styles, s, rng, midx,
-                                       name, collection)
-            if s.ensure_door:
-                core.apply_doors(shell, s, rng,
-                                 midx, lambda m: self.report({'WARNING'}, m))
-            count += 1
+        for gen in range(s.blueprint_count):
+            dx = gen * gen_step
+            for n, loop in enumerate(loops):
+                slot_key = 7919 * (gen * len(loops) + n + 1)
+                rng = self._shell_rng(s, slot_key)
+                height, styles = self._pick_height_styles(midx, rng)
+                if not styles:
+                    continue
+                translated = self._translate_loop(loop, dx, 0.0)
+                if gen == 0 and n == 0:
+                    name = "[Generated_Shell_BP_%d]" % n
+                else:
+                    name = "[Generated_Shell_BP_%d_%d]" % (gen, n)
+                shell = core.realize_shell(translated, height, styles, s, rng, midx,
+                                           name, collection)
+                if s.ensure_door:
+                    core.apply_doors(shell, s, rng,
+                                     midx, lambda m: self.report({'WARNING'}, m))
+                count += 1
         return count
 
     @staticmethod
@@ -282,6 +328,10 @@ class HSG_PT_panel(Panel):
                       % (len(loops), len(blueprint.blueprint_data["points"])))
             box.label(text="Generate anytime — no need to close editor",
                       icon='INFO')
+            box.prop(s, "blueprint_count")
+            box.prop(s, "spacing",
+                     text="Duplicate Spacing",
+                     icon='ARROW_LEFTRIGHT')
         else:
             box = layout.box()
             box.label(text="Dimensions (m)", icon='FIXED_SIZE')
@@ -310,8 +360,12 @@ class HSG_PT_panel(Panel):
 
         box = layout.box()
         box.label(text="Randomness", icon='MOD_NOISE')
-        box.prop(s, "seed")
+        box.prop(s, "random_seed")
+        row = box.row()
+        row.enabled = not s.random_seed
+        row.prop(s, "seed")
         box.prop(s, "wall_type_probability")
+        box.prop(s, "bay_window_probability")
         if s.mix_styles:
             box.prop(s, "wall_style_probability")
 

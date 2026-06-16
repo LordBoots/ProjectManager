@@ -31,6 +31,7 @@ GENERATED_COLLECTION = "Generated_Shells"
 PLAIN_KEYWORD = "Plain"
 HALF_KEYWORD = "Half"
 DOOR_KEYWORD = "Door"
+BAY_WINDOW_KEYWORD = "BayWindow"
 
 
 # --- data model --------------------------------------------------------------
@@ -157,6 +158,8 @@ def _category_from_type(type_name):
         return "Half"
     if low.startswith(DOOR_KEYWORD.lower()):
         return "Door"
+    if low.startswith(BAY_WINDOW_KEYWORD.lower()):
+        return "BayWindow"
     return "Window"
 
 
@@ -220,11 +223,27 @@ class ModelIndex:
     def wall_bucket(self, height, style, width):
         return self.walls.get(height, {}).get(style, {}).get(width, {})
 
-    def pick_wall(self, rng, height, style, width, want_window, window_room):
+    def _pick_window(self, rng, bucket, bay_window_probability):
+        """Pick a bay or non-bay window from the bucket."""
+        bays = bucket.get("BayWindow", [])
+        others = bucket.get("Window", [])
+        if not bays and not others:
+            return None, None
+        if bays and not others:
+            return rng.choice(bays), "BayWindow"
+        if others and not bays:
+            return rng.choice(others), "Window"
+        if rng.random() < bay_window_probability:
+            return rng.choice(bays), "BayWindow"
+        return rng.choice(others), "Window"
+
+    def pick_wall(self, rng, height, style, width, want_window, window_room,
+                  bay_window_probability=0.5):
         """Pick a wall source object and return (object, category).
 
         For HALF width returns a 'Half' object. For FULL width chooses between
         Plain and Window per want_window/window_room with graceful fallback.
+        When a window is chosen, bay_window_probability weights bay vs other types.
         """
         bucket = self.wall_bucket(height, style, width)
         if width == HALF_WIDTH:
@@ -234,13 +253,20 @@ class ModelIndex:
             return None, "Half"
 
         plains = bucket.get("Plain", [])
-        windows = bucket.get("Window", [])
-        if want_window and windows and window_room >= width:
-            return rng.choice(windows), "Window"
+        bays = bucket.get("BayWindow", [])
+        others = bucket.get("Window", [])
+        has_windows = bool(bays or others)
+
+        if want_window and has_windows and window_room >= width:
+            obj, cat = self._pick_window(rng, bucket, bay_window_probability)
+            if obj is not None:
+                return obj, cat
         if plains:
             return rng.choice(plains), "Plain"
-        if windows:
-            return rng.choice(windows), "Window"
+        if has_windows:
+            obj, cat = self._pick_window(rng, bucket, bay_window_probability)
+            if obj is not None:
+                return obj, cat
         return None, "Plain"
 
     def pick_door(self, rng, height, style, width):
@@ -450,7 +476,9 @@ def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, co
             style = single_style if single_style else rng.choice(styles)
             want_window = (rng.random() > settings.wall_type_probability)
             room = window_budget - window_used - 1e-6
-            source, category = midx.pick_wall(rng, height_pool, style, w, want_window, room)
+            source, category = midx.pick_wall(
+                rng, height_pool, style, w, want_window, room,
+                settings.bay_window_probability)
             slot = Slot(w, category, style, source)
             if source is not None:
                 center = (v1[0] + travel[0] * (cum + w / 2.0),
@@ -467,7 +495,7 @@ def realize_shell(loop, height_pool, styles, settings, rng, midx, shell_name, co
                     "style": style,
                 }
                 shell.walls.append(slot_meta)
-                if category == "Window":
+                if category in ("Window", "BayWindow"):
                     window_used += w
             edge.slots.append(slot)
             cum += w
