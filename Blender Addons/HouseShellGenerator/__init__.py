@@ -35,9 +35,16 @@ _already_loaded = True
 
 # --- property groups ---------------------------------------------------------
 
+def _on_wall_collection_toggle(self, context):
+    if context is None:
+        return
+    if blueprint.model_picker_active():
+        blueprint.refresh_model_picker(context)
+
+
 class HSG_CollectionItem(PropertyGroup):
     name: StringProperty()
-    use: BoolProperty(default=False)
+    use: BoolProperty(default=False, update=_on_wall_collection_toggle)
 
 
 class HSG_Settings(PropertyGroup):
@@ -121,6 +128,8 @@ def _rescan(settings):
             item = settings.pillar_collections.add()
             item.name = coll.name
             item.use = prev_pillars.get(coll.name, False)
+    if blueprint.model_picker_active():
+        blueprint.refresh_model_picker(bpy.context)
 
 
 class HSG_OT_rescan(Operator):
@@ -319,6 +328,7 @@ class HSG_PT_panel(Panel):
             if blueprint.blueprint_editor_active():
                 box.label(text="Editor open in split pane", icon='CHECKMARK')
                 box.operator("hsg.close_blueprint_view", icon='PANEL_CLOSE')
+                box.operator("hsg.refresh_model_picker", icon='FILE_REFRESH')
             else:
                 box.operator("hsg.open_blueprint_view", icon='ADD')
             row = box.row()

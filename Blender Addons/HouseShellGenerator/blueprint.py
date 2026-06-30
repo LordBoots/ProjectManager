@@ -24,6 +24,7 @@ blueprint_data = {
 }
 
 BLUEPRINT_VIEW_LAYER = "HSG_Blueprint"
+MODEL_PICKER_COLLECTION = "HSG_ModelPicker_Preview"
 
 GRID = core.GRID                      # 1.25m
 GRID_RANGE = 24                       # how many cells to draw each way
@@ -79,6 +80,11 @@ def get_blueprint_loops():
 def blueprint_editor_active():
     session = _get_session()
     return session is not None and session.is_active()
+
+
+def model_picker_active():
+    session = _get_session()
+    return session is not None and session.get_picker_area() is not None
 
 
 def _extract_loops(points, edges):
@@ -220,6 +226,165 @@ def _configure_blueprint_viewport(context, area):
     for flag in _OBJECT_TYPE_FLAGS:
         if hasattr(space, flag):
             setattr(space, flag, False)
+
+
+def _configure_model_picker_viewport(context, area):
+    """Top ortho viewport for model thumbnails."""
+    space = area.spaces.active
+    if space.type != 'VIEW_3D':
+        return
+
+    region = _window_region(area)
+    if region is not None:
+        override = context.copy()
+        override["window"] = context.window
+        override["screen"] = context.screen
+        override["area"] = area
+        override["region"] = region
+        override["space_data"] = space
+        with context.temp_override(**override):
+            bpy.ops.view3d.view_axis(type='TOP')
+
+    rv3d = space.region_3d
+    if rv3d is not None:
+        rv3d.view_perspective = 'ORTHO'
+        rv3d.view_distance = GRID_RANGE * GRID * 0.7
+        if hasattr(rv3d, "lock_rotation"):
+            rv3d.lock_rotation = True
+
+    if hasattr(space, "show_gizmo"):
+        space.show_gizmo = False
+    if hasattr(space.shading, "type"):
+        space.shading.type = 'SOLID'
+    if hasattr(space, "show_region_ui"):
+        space.show_region_ui = False
+
+    overlay = space.overlay
+    overlay.show_floor = False
+    overlay.show_ortho_grid = False
+    overlay.show_axis_x = False
+    overlay.show_axis_y = False
+    overlay.show_axis_z = False
+    overlay.show_outline_selected = True
+    overlay.show_extras = False
+    overlay.show_relationship_lines = False
+
+    # Keep meshes visible in picker pane, hide most other types.
+    if hasattr(space, "show_object_viewport_mesh"):
+        space.show_object_viewport_mesh = True
+    for flag in _OBJECT_TYPE_FLAGS:
+        if flag == "show_object_viewport_mesh":
+            continue
+        if hasattr(space, flag):
+            setattr(space, flag, False)
+
+
+def _get_model_picker_collection():
+    coll = bpy.data.collections.get(MODEL_PICKER_COLLECTION)
+    if coll is None:
+        coll = bpy.data.collections.new(MODEL_PICKER_COLLECTION)
+        bpy.context.scene.collection.children.link(coll)
+    return coll
+
+
+def _clear_model_picker_collection():
+    coll = bpy.data.collections.get(MODEL_PICKER_COLLECTION)
+    if coll is None:
+        return
+    for obj in list(coll.objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _selected_wall_models(context):
+    settings = context.scene.hsg_settings
+    selected = []
+    for item in settings.wall_collections:
+        if not item.use:
+            continue
+        coll = bpy.data.collections.get(item.name)
+        if coll is None:
+            continue
+        for obj in coll.all_objects:
+            if obj.type != 'MESH':
+                continue
+            info = core.parse_wall_object(obj.name)
+            if not info:
+                continue
+            selected.append((obj, info))
+    return selected
+
+
+def _enter_local_view_with_objects(context, area, objects):
+    if not objects:
+        return
+    region = _window_region(area)
+    if region is None:
+        return
+
+    view_layer = context.view_layer
+    prev_active = view_layer.objects.active
+    prev_selected = [o for o in view_layer.objects if o.select_get()]
+
+    try:
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in objects:
+            obj.select_set(True)
+        view_layer.objects.active = objects[0]
+
+        override = context.copy()
+        override["window"] = context.window
+        override["screen"] = context.screen
+        override["area"] = area
+        override["region"] = region
+        override["space_data"] = area.spaces.active
+        with context.temp_override(**override):
+            if area.spaces.active.local_view is not None:
+                bpy.ops.view3d.localview(frame_selected=False)
+            bpy.ops.view3d.localview(frame_selected=False)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
+    finally:
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in prev_selected:
+            if obj.name in bpy.data.objects:
+                obj.select_set(True)
+        view_layer.objects.active = prev_active
+
+
+def refresh_model_picker(context):
+    """Rebuild picker objects from currently selected wall collections."""
+    session = _get_session()
+    if session is None:
+        return
+    picker_area = session.get_picker_area()
+    if picker_area is None:
+        return
+
+    _clear_model_picker_collection()
+    picker_coll = _get_model_picker_collection()
+    selected = _selected_wall_models(context)
+    selected.sort(key=lambda x: (
+        x[1]["height"], x[1]["style"], x[1]["category"], x[1]["type_name"], x[0].name
+    ))
+
+    cols = 8
+    cell = 4.0
+    placed = []
+    for idx, (src, info) in enumerate(selected):
+        dup = src.copy()
+        if src.data is not None:
+            dup.data = src.data.copy()
+        dup.name = "[Picker_%s]" % src.name.strip("[]")
+        dup.location = ((idx % cols) * cell, -(idx // cols) * cell, 0.0)
+        dup.rotation_euler = (-math.pi * 0.5, 0.0, 0.0)
+        dup["hsg_source_name"] = src.name
+        dup["hsg_source_collection"] = src.users_collection[0].name if src.users_collection else ""
+        dup["hsg_category"] = info["category"]
+        picker_coll.objects.link(dup)
+        placed.append(dup)
+
+    _configure_model_picker_viewport(context, picker_area)
+    _enter_local_view_with_objects(context, picker_area, placed)
+    picker_area.tag_redraw()
 
 
 # --- drawing (GPU) -----------------------------------------------------------
@@ -428,8 +593,9 @@ def _get_session():
 
 
 class BlueprintViewSession:
-    def __init__(self, area):
+    def __init__(self, area, picker_area):
         self.area_ptr = area.as_pointer()
+        self.picker_area_ptr = picker_area.as_pointer() if picker_area else None
         self.draw_handle_3d = None
         self.draw_handle_ui = None
         self.stop_requested = False
@@ -444,6 +610,15 @@ class BlueprintViewSession:
     def is_active(self):
         area = self.get_area()
         return area is not None and area.type == 'VIEW_3D'
+
+    def get_picker_area(self):
+        if self.picker_area_ptr is None:
+            return None
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.as_pointer() == self.picker_area_ptr:
+                    return area
+        return None
 
     def mouse_in_window_region(self, event):
         area = self.get_area()
@@ -536,11 +711,65 @@ def open_blueprint_view(context):
     if blueprint_area is None:
         return None, "Could not create blueprint viewport."
 
-    _configure_blueprint_viewport(context, blueprint_area)
+    before_h = {area.as_pointer() for area in screen.areas}
+    bx, by, bw, bh = blueprint_area.x, blueprint_area.y, blueprint_area.width, blueprint_area.height
+    h_region = _window_region(blueprint_area)
+    if h_region is None:
+        _configure_blueprint_viewport(context, blueprint_area)
+        _session = BlueprintViewSession(blueprint_area, None)
+        _session.register_handlers()
+        blueprint_area.tag_redraw()
+        bpy.ops.hsg.blueprint_input('INVOKE_DEFAULT')
+        return blueprint_area, None
+    split_result = {'CANCELLED'}
+    split_attempt_factors = (0.6, 0.5, 0.7, 0.4, 0.8)
+    for factor in split_attempt_factors:
+        h_override = context.copy()
+        h_override["window"] = context.window
+        h_override["screen"] = screen
+        h_override["area"] = blueprint_area
+        h_override["region"] = h_region
+        with context.temp_override(**h_override):
+            split_result = bpy.ops.screen.area_split(direction='HORIZONTAL', factor=factor)
+        if 'FINISHED' in split_result:
+            break
 
-    _session = BlueprintViewSession(blueprint_area)
+    picker_area = None
+    if 'FINISHED' in split_result:
+        candidates = []
+        for area in screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            if abs(area.x - bx) <= 2 and abs(area.width - bw) <= 2:
+                if (by - 2) <= area.y and (area.y + area.height) <= (by + bh + 2):
+                    candidates.append(area)
+        if len(candidates) >= 2:
+            candidates.sort(key=lambda a: a.y, reverse=True)
+            blueprint_area = candidates[0]
+            picker_area = candidates[-1]
+        else:
+            for area in screen.areas:
+                if area.type == 'VIEW_3D' and area.as_pointer() not in before_h:
+                    picker_area = area
+                    break
+
+    _configure_blueprint_viewport(context, blueprint_area)
+    if picker_area is not None:
+        _configure_model_picker_viewport(context, picker_area)
+
+    _session = BlueprintViewSession(blueprint_area, picker_area)
     _session.register_handlers()
+    if picker_area is not None:
+        refresh_model_picker(context)
+        _session.open_message = None
+    else:
+        _session.open_message = (
+            "Model picker split unavailable "
+            "(result=%s, bp_area=%dx%d)." % (set(split_result), bw, bh)
+        )
     blueprint_area.tag_redraw()
+    if picker_area is not None:
+        picker_area.tag_redraw()
 
     bpy.ops.hsg.blueprint_input('INVOKE_DEFAULT')
     return blueprint_area, None
@@ -552,6 +781,7 @@ def close_blueprint_view():
         return False
     _session.close()
     _session = None
+    _clear_model_picker_collection()
     return True
 
 
@@ -568,7 +798,14 @@ class HSG_OT_open_blueprint_view(bpy.types.Operator):
         if err:
             self.report({'ERROR'}, err)
             return {'CANCELLED'}
-        self.report({'INFO'}, "Blueprint editor open — draw anytime, generate without closing.")
+        if model_picker_active():
+            self.report({'INFO'}, "Blueprint + model picker open.")
+        else:
+            msg = "Blueprint open. Model picker split unavailable in current layout."
+            session = _get_session()
+            if session is not None and getattr(session, "open_message", None):
+                msg = session.open_message
+            self.report({'WARNING'}, msg)
         return {'FINISHED'}
 
 
@@ -588,6 +825,22 @@ class HSG_OT_close_blueprint_view(bpy.types.Operator):
             return {'FINISHED'}
         self.report({'WARNING'}, "Blueprint editor is not open.")
         return {'CANCELLED'}
+
+
+class HSG_OT_refresh_model_picker(bpy.types.Operator):
+    """Rebuild model picker thumbnails from selected wall collections"""
+    bl_idname = "hsg.refresh_model_picker"
+    bl_label = "Refresh Model Picker"
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        return model_picker_active()
+
+    def execute(self, context):
+        refresh_model_picker(context)
+        self.report({'INFO'}, "Model picker refreshed.")
+        return {'FINISHED'}
 
 
 class HSG_OT_blueprint_input(bpy.types.Operator):
@@ -652,6 +905,7 @@ class HSG_OT_clear_blueprint(bpy.types.Operator):
 classes = (
     HSG_OT_open_blueprint_view,
     HSG_OT_close_blueprint_view,
+    HSG_OT_refresh_model_picker,
     HSG_OT_blueprint_input,
     HSG_OT_clear_blueprint,
 )
